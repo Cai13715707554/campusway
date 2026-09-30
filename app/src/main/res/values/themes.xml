@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      仅用于提供启动窗口外观；真正的配色由 Compose 侧的 CampusWayTheme 负责，
+      这样“跟随系统/浅色/深色”三档切换才能即时生效。
+    -->
+    <style name="Theme.CampusWay" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

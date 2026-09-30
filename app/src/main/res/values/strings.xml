@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">校途</string>
+    <string name="app_name_en">CampusWay</string>
+
+    <!-- 底部导航 -->
+    <string name="nav_timetable">课表</string>
+    <string name="nav_map">导航</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- 无障碍描述 -->
+    <string name="cd_back">返回</string>
+    <string name="cd_search">搜索</string>
+    <string name="cd_close">关闭</string>
+</resources>

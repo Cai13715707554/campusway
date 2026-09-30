@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色：鸿蒙风的白底、极浅的分割区域 -->
+    <color name="window_background">#FFF5F6F8</color>
+    <color name="harmony_blue">#FF0A59F7</color>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- 课表、校园数据、设置都保存在 files/datastore 下，默认整目录备份 -->
+    <exclude domain="sharedpref" path="campusway_secure.xml" />
+</full-backup-content>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  前景：简化的“教学楼 + 路径”标识，代表校园导航。
+  108dp 画布，中心 72dp 为安全区，图形控制在中间区域。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 主楼体（带屋顶的矩形） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M34,44 L54,33 L74,44 L74,74 L34,74 Z" />
+    <!-- 楼体中的门洞，用底色挖空 -->
+    <path
+        android:fillColor="#FF0A59F7"
+        android:pathData="M48,58 L60,58 L60,74 L48,74 Z" />
+    <!-- 门前路径折线，暗示室内/室外导航 -->
+    <path
+        android:strokeColor="#FF8CC1FF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M54,74 L54,84 L40,84" />
+    <!-- 定位点 -->
+    <path
+        android:fillColor="#FFB3F0C6"
+        android:pathData="M40,84 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+</vector>

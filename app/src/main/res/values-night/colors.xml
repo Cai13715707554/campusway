@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色：鸿蒙深色底，避免纯黑刺眼 -->
+    <color name="window_background">#FF101114</color>
+    <color name="harmony_blue">#FF317AF7</color>
+</resources>

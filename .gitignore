@@ -1,0 +1,30 @@
+## Gradle
+# 构建产物可能很大，且包含本机绝对路径，不入库
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+## 本机构建环境（离线构建时把 Gradle 发行版与依赖缓存放在这里）
+.gradle-home/
+.tools/
+.tmp-docs/
+.tmp-tools/
+.build-logs/
+
+## IDE
+.idea/
+*.iml
+*.hprof
+.DS_Store
+
+## Android
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+output.json
+release/
