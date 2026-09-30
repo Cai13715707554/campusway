@@ -152,11 +152,12 @@ object SampleData {
                 room(rid("r102"), "10${level + 1}教室", "10${level + 1}", floorId, B1, NormRect(0.06f, 0.36f, 0.30f, 0.56f)),
                 room(rid("r103"), "10${level + 2}教室", "10${level + 2}", floorId, B1, NormRect(0.06f, 0.62f, 0.30f, 0.82f)),
                 room(rid("r201"), "20${level}教室", "20${level}", floorId, B1, NormRect(0.70f, 0.10f, 0.94f, 0.30f)),
-                room(rid("r302"), "30${level}专业教室", "30${level}", floorId, B1, NormRect(0.70f, 0.36f, 0.94f, 0.56f), RoomKind.LAB),
-                room(rid("r401"), "40${level}办公室", "40${level}", floorId, B1, NormRect(0.70f, 0.62f, 0.94f, 0.82f), RoomKind.OFFICE),
-                room(rid("rps"), "卫生间", "卫", floorId, B1, NormRect(0.36f, 0.86f, 0.50f, 0.96f), RoomKind.RESTROOM),
-                room(rid("rs1"), "东楼梯", "梯", floorId, B1, NormRect(0.33f, 0.06f, 0.42f, 0.22f), RoomKind.STAIRS),
-                room(rid("rs2"), "西楼梯", "梯", floorId, B1, NormRect(0.58f, 0.06f, 0.67f, 0.22f), RoomKind.STAIRS)
+                room(rid("r202"), "20${level + 1}教室", "20${level + 1}", floorId, B1, NormRect(0.70f, 0.36f, 0.94f, 0.56f)),
+                room(rid("r302"), "30${level}专业教室", "30${level}", floorId, B1, NormRect(0.36f, 0.10f, 0.64f, 0.30f), RoomKind.LAB),
+                room(rid("r401"), "40${level}办公室", "40${level}", floorId, B1, NormRect(0.34f, 0.56f, 0.66f, 0.80f), RoomKind.OFFICE),
+                room(rid("rps"), "卫生间", "卫", floorId, B1, NormRect(0.34f, 0.84f, 0.46f, 0.96f), RoomKind.RESTROOM),
+                room(rid("rs1"), "东楼梯", "梯", floorId, B1, NormRect(0.70f, 0.60f, 0.80f, 0.80f), RoomKind.STAIRS),
+                room(rid("rs2"), "西楼梯", "梯", floorId, B1, NormRect(0.52f, 0.84f, 0.64f, 0.96f), RoomKind.STAIRS)
             )
             if (isGround) {
                 rooms += room(

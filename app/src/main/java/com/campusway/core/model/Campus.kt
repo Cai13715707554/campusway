@@ -291,6 +291,17 @@ data class RoomLocation(
     val room: Room
 )
 
+/**
+ * 关于路径节点接入的说明（给后续维护者）：
+ *
+ * RoutePlanner 用「离房间中心最近的路径节点」把房间接到走廊网格上，
+ * 所以房间与走廊节点的距离会直接影响画出来的路线观感。
+ * 示例数据里最下排的卫生间/楼梯距走廊约 0.3~0.45（归一化坐标），
+ * 线条会略微绕一点，但引导与绘制都正确。
+ * 若想让路线更贴合，只需把 SampleData 中对应楼层的 corridorNodes 的 y 值
+ * 往那一排房间方向挪一点，不需要改任何算法。
+ */
+
 /** 搜索结果。 */
 sealed interface SearchHit {
     data class BuildingHit(val building: Building) : SearchHit
