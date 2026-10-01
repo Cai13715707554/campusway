@@ -21,10 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -140,6 +142,41 @@ fun SettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(CampusDimens.ItemSpacing)
         ) {
+            // ---------------------------------------------------- 功课表
+            // 放在最顶部：导入功课表是主要操作，藏在页面底部会让人以为"没这个功能"
+            item { GroupTitle("功课表", Icons.Outlined.TableChart) }
+            item {
+                HarmonyCard {
+                    InfoRow(
+                        label = "导入功课表",
+                        value = "xlsx / csv / 粘贴",
+                        valueColor = MaterialTheme.colorScheme.primary,
+                        onClick = { showImport = true }
+                    )
+                    InfoRow(
+                        label = "当前课程",
+                        value = "${state.courseCount} 门 · ${state.periodCount} 个节次"
+                    )
+                    HarmonyDivider()
+                    Text(
+                        text = "支持 .xlsx（格式示例见工程 docs/功课表.xlsx）、.csv/.txt，" +
+                            "也可以从 Excel 框选复制后粘贴。第一行需要是「星期一…星期日」。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HarmonyChip(
+                            text = "重看新用户引导",
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            onClick = onReplayOnboarding
+                        )
+                    }
+                }
+            }
+
             // ---------------------------------------------------- 外观
             item { GroupTitle("外观", Icons.Outlined.Palette) }
             item {
@@ -368,20 +405,11 @@ fun SettingsScreen(
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         HarmonyChip(
-                            text = "导入功课表",
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.primary,
-                            onClick = { showImport = true }
-                        )
-                        HarmonyChip(
                             text = "校验数据",
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                             contentColor = MaterialTheme.colorScheme.primary,
                             onClick = onValidate
                         )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         HarmonyChip(
                             text = "清空已导入数据",
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -418,14 +446,45 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(6.dp))
                     HarmonyDivider()
-                    // 调试入口：需要口令，防止误触
-                    InfoRow(
-                        label = "调试",
-                        value = if (settings.useTestData) "测试数据：开" else "测试数据：关",
-                        valueColor = if (settings.useTestData) CampusColors.Warning
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        onClick = { showPasswordDialog = true }
-                    )
+                    // 调试入口：需要口令（1101），防止误触。
+                    // 刻意做成一眼能认出来的整行按钮，而不是和普通信息行一样，
+                    // 否则很容易被当成只读信息略过。
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(CampusDimens.ChipRadius))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { showPasswordDialog = true }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.BugReport,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "调试入口",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                text = "点击后输入口令，可开关测试数据",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = if (settings.useTestData) "测试数据：开" else "测试数据：关",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (settings.useTestData) CampusColors.Warning
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "校途把课表、校园平面图和教学楼内导览放在一起，" +

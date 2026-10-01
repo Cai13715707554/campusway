@@ -276,6 +276,9 @@ class SettingsViewModel(
     val aboutInfo: List<Pair<String, String>> = listOf(
         "应用名称" to "校途 CampusWay",
         "版本" to BuildInfo.VERSION_NAME,
+        // 直接列出本版新增：在关于页看到这行，就说明装的是最新构建，
+        // 不用再怀疑"改了怎么没生效"。
+        "本版新增" to "导入功课表 · 调试入口",
         "构建类型" to BuildInfo.BUILD_TYPE,
         "目标平台" to "Android ${BuildInfo.MIN_SDK}+",
         "导航服务商" to "高德地图 / 腾讯地图（没网时自动按离线估算）",

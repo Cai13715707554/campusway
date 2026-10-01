@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  debug 变体的应用名。
+  debug 构建带 applicationIdSuffix=".debug"，会与 release 同时存在于桌面，
+  两个图标名字一样很容易点错、进而以为"改动没生效"。这里给调试版加上后缀区分。
+-->
+<resources>
+    <string name="app_name">校途 调试</string>
+</resources>
