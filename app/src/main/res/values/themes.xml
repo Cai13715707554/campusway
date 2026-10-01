@@ -3,11 +3,18 @@
     <!--
       仅用于提供启动窗口外观；真正的配色由 Compose 侧的 CampusWayTheme 负责，
       这样“跟随系统/浅色/深色”三档切换才能即时生效。
+
+      父主题刻意选 android:Theme.Material.Light.NoActionBar：
+        * 它在 API 21 就存在，minSdk 26 的所有机型都能解析；
+        * 不要用 android:Theme.DeviceDefault.DayNight —— 那是 API 29 才加入的平台主题，
+          在 Android 8/9 上不存在，Activity 应用主题时会直接崩（一打开就闪退）。
+      深色下的差异（浅色状态栏图标、深色窗口底色）由 values-night/themes.xml 覆盖。
     -->
-    <style name="Theme.CampusWay" parent="android:Theme.DeviceDefault.DayNight">
+    <style name="Theme.CampusWay" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 </resources>

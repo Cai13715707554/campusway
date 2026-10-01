@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      深色模式覆盖：只改「状态栏图标要用浅色」这一项，
+      其余（窗口底色）由 values-night/colors.xml 里的 window_background 自动生效。
+      父主题与浅色版本保持一致，避免两套主题在 API 26~28 上行为不一致。
+    -->
+    <style name="Theme.CampusWay" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>

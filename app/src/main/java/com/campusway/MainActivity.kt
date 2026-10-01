@@ -34,8 +34,9 @@ import com.campusway.ui.theme.CampusWayTheme
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // 顺序很重要：先 super.onCreate，再做边到边设置
+        enableEdgeToEdge()
 
         val container = (application as CampusWayApplication).container
 

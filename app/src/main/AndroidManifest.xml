@@ -19,8 +19,14 @@
         android:name="android.hardware.location"
         android:required="false" />
 
+    <!--
+      注意：Application 的实际包是 com.campusway.app，
+      清单里必须写全相对路径 .app.CampusWayApplication。
+      只写 .CampusWayApplication 会解析到 com.campusway.CampusWayApplication，
+      运行时会抛 ClassNotFoundException，表现为「一打开就闪退」。
+    -->
     <application
-        android:name=".CampusWayApplication"
+        android:name=".app.CampusWayApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
