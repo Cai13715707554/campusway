@@ -104,6 +104,12 @@ private fun AppRoot(container: AppContainer) {
         // 主题与字号：引导页点选就立即生效（否则要等走完流程才看得到效果）
         onOnboardingThemeMode = { mode -> update { it.copy(themeMode = mode) } },
         onOnboardingFontScale = { scale -> update { it.copy(fontScale = scale) } },
+        // 引导页导入功课表：课程表与作息一起落盘
+        onImportTimetable = { imported ->
+            scope.launch {
+                container.campusRepository.importTimetable(imported.timeTable, imported.courseTable)
+            }
+        },
         onFinishOnboarding = { draft: OnboardingDraft ->
             update { current ->
                 current.copy(

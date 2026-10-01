@@ -89,6 +89,14 @@ data class AppSettings(
 
     /** 是否已完成新用户引导。 */
     val onboardingCompleted: Boolean = false,
+    /**
+     * 是否使用内置测试数据（示例学校与示例课表）。
+     *
+     * 只在设置的调试入口里开关，**默认关闭**。
+     * 关闭时应用只用用户自己导入的数据；打开后忽略用户数据，
+     * 直接加载内置示例，方便开发与演示。
+     */
+    val useTestData: Boolean = false,
     /** 用户称呼，用于首页问候。 */
     val userName: String = "",
     /** 学校名称。 */

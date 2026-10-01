@@ -3,6 +3,14 @@ package com.campusway.core.model
 import kotlinx.serialization.Serializable
 
 /**
+ * 课程配色数量。
+ *
+ * 放在领域层是因为"给课程分配色号"是导入逻辑的一部分（见 TimetableGridParser），
+ * 而色板本身在 ui/theme 里。两处必须一致，这里作为唯一来源。
+ */
+const val COURSE_COLOR_COUNT = 8
+
+/**
  * 一天的课程时间划分（节次/时段）。
  *
  * 校途的课表由「课程表」和「课程时间表」两部分组成，二者分开存储、分开展示：

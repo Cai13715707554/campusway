@@ -52,6 +52,9 @@ object CampusColors {
     /**
      * 课程主题色板：8 组颜色，保证浅色与深色底上都能看清白字。
      * 同一门课在所有页面颜色保持一致。
+     *
+     * 数量必须与 core 里的 [com.campusway.core.model.COURSE_COLOR_COUNT] 一致
+     * （导入课表时按它取模分配色号）。
      */
     private val CoursePaletteLight = listOf(
         Color(0xFF0A59F7), // 鸿蒙蓝

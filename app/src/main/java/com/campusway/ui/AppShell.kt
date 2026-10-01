@@ -19,6 +19,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.campusway.app.NavigationViewModel
 import com.campusway.app.SettingsViewModel
 import com.campusway.app.TimetableViewModel
+import com.campusway.core.importer.ImportedTimetable
 import com.campusway.core.model.AppSettings
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.ThemeMode
@@ -47,16 +48,23 @@ fun AppShell(
     onOnboardingThemeMode: (ThemeMode) -> Unit,
     /** 引导页里切换字号：立即写入设置，界面实时生效。 */
     onOnboardingFontScale: (FontScale) -> Unit,
+    /** 引导页导入功课表：写入仓储。 */
+    onImportTimetable: (ImportedTimetable) -> Unit,
     onFinishOnboarding: (OnboardingDraft) -> Unit,
     onReplayOnboarding: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 校园数据要在引导分支之前取：引导页导入功课时需要它来匹配教室
+    val campus by navigationViewModel.campus.collectAsStateWithLifecycle()
+
     // ---------------- 新用户引导 ----------------
     if (!settings.onboardingCompleted) {
         Box(modifier = modifier.fillMaxSize().statusBarsPadding()) {
             OnboardingScreen(
                 initialThemeMode = settings.themeMode,
                 initialFontScale = settings.fontScale,
+                campus = campus,
+                onImportTimetable = onImportTimetable,
                 initialAmapKey = settings.amapKey,
                 initialTencentKey = settings.tencentKey,
                 onThemeModeChange = onOnboardingThemeMode,
@@ -72,7 +80,6 @@ fun AppShell(
 
     val timetableData by timetableViewModel.uiState.collectAsStateWithLifecycle()
     val navState by navigationViewModel.uiState.collectAsStateWithLifecycle()
-    val campus by navigationViewModel.campus.collectAsStateWithLifecycle()
     val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize().statusBarsPadding()) {
@@ -115,6 +122,7 @@ fun AppShell(
                         settings = settings,
                         state = settingsState,
                         aboutInfo = settingsViewModel.aboutInfo,
+                        campus = campus,
                         onThemeMode = settingsViewModel::setThemeMode,
                         onFontScale = settingsViewModel::setFontScale,
                         onAnimations = settingsViewModel::setAnimationsEnabled,
@@ -134,7 +142,10 @@ fun AppShell(
                         onSchoolName = settingsViewModel::setSchoolName,
                         onClearCache = settingsViewModel::clearMapCache,
                         onValidate = settingsViewModel::validateData,
-                        onResetSample = settingsViewModel::resetToSampleData,
+                        onClearImportedData = settingsViewModel::clearImportedData,
+                        onImportTimetable = settingsViewModel::importTimetable,
+                        onSetUseTestData = settingsViewModel::setUseTestData,
+                        onCheckDebugPassword = settingsViewModel::checkDebugPassword,
                         onResetSettings = settingsViewModel::resetAllSettings,
                         onConsumeMessage = settingsViewModel::consumeMessage,
                         onReplayOnboarding = onReplayOnboarding

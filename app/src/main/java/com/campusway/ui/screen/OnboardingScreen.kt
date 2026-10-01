@@ -47,9 +47,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.campusway.core.importer.ImportedTimetable
 import com.campusway.core.map.Connectivity
 import com.campusway.core.map.KeyCheckResult
 import com.campusway.core.map.MapKeyValidator
+import com.campusway.core.model.Campus
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.NavProviders
 import com.campusway.core.model.ThemeMode
@@ -89,6 +91,10 @@ data class OnboardingDraft(
 fun OnboardingScreen(
     initialThemeMode: ThemeMode,
     initialFontScale: FontScale,
+    /** 当前校园数据：导入功课表时用来把 `课程名@地点` 关联到真实房间。 */
+    campus: Campus,
+    /** 用户导入功课表后回调，由上层写入仓储。 */
+    onImportTimetable: (ImportedTimetable) -> Unit,
     /** 从设置页「重看引导」进来时，把已保存的 Key 预填好，避免重新粘贴。 */
     initialAmapKey: String = "",
     initialTencentKey: String = "",
@@ -233,7 +239,12 @@ fun OnboardingScreen(
                     onTheme = onThemeModeChange,
                     onFont = onFontScaleChange
                 )
-                3 -> StepTimetable(axis = axis, onAxis = { axis = it })
+                3 -> StepImportTimetable(
+                    axis = axis,
+                    onAxis = { axis = it },
+                    campus = campus,
+                    onImported = onImportTimetable
+                )
                 else -> StepNavigationKeys(
                     amapKey = amapKey,
                     tencentKey = tencentKey,
@@ -509,11 +520,29 @@ private fun StepAppearance(
     }
 }
 
+/**
+ * 导入功课表 + 选择课程表显示方式。
+ *
+ * 为什么把"导入"放在引导里：没有课表，进去之后整个应用是空的。
+ * 这里允许先跳过（直接下一步），课表页会提示去设置里导入。
+ */
 @Composable
-private fun StepTimetable(axis: TimetableAxis, onAxis: (TimetableAxis) -> Unit) {
+private fun StepImportTimetable(
+    axis: TimetableAxis,
+    onAxis: (TimetableAxis) -> Unit,
+    campus: Campus,
+    onImported: (ImportedTimetable) -> Unit
+) {
+    TimetableImportCard(
+        campus = campus,
+        onImported = onImported
+    )
+
+    Spacer(Modifier.height(12.dp))
+
     HarmonyCard {
         Text(
-            text = "课表",
+            text = "课表显示",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
@@ -534,7 +563,8 @@ private fun StepTimetable(axis: TimetableAxis, onAxis: (TimetableAxis) -> Unit) 
         HarmonyDivider()
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "当前内置了一套示例作息与示例课程，导入自己的课表可在设置里完成。",
+            text = "格式示例见工程里的 docs/功课表.xlsx：第一行是星期一到星期五，" +
+                "第一列可以放节次或时间，「上午 / 下午」这类整行文字会被识别为时段分隔。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

@@ -11,11 +11,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Info
@@ -26,7 +29,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -45,8 +47,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.campusway.app.SettingsUiState
+import com.campusway.core.importer.ImportedTimetable
 import com.campusway.core.model.AppSettings
+import com.campusway.core.model.Campus
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.NavProviders
 import com.campusway.core.model.ThemeMode
@@ -74,6 +79,8 @@ fun SettingsScreen(
     settings: AppSettings,
     state: SettingsUiState,
     aboutInfo: List<Pair<String, String>>,
+    /** 当前校园数据：导入功课表时用于把 `课程名@地点` 关联到真实房间。 */
+    campus: Campus,
     onThemeMode: (ThemeMode) -> Unit,
     onFontScale: (FontScale) -> Unit,
     onAnimations: (Boolean) -> Unit,
@@ -93,7 +100,14 @@ fun SettingsScreen(
     onSchoolName: (String) -> Unit,
     onClearCache: () -> Unit,
     onValidate: () -> Unit,
-    onResetSample: () -> Unit,
+    /** 清空用户自己导入的数据（不影响"测试数据"开关）。 */
+    onClearImportedData: () -> Unit,
+    /** 导入一份解析好的功课表。 */
+    onImportTimetable: (ImportedTimetable) -> Unit,
+    /** 开关内置测试数据。 */
+    onSetUseTestData: (Boolean) -> Unit,
+    /** 校验调试口令。 */
+    onCheckDebugPassword: (String) -> Boolean,
     onResetSettings: () -> Unit,
     onConsumeMessage: () -> Unit,
     onReplayOnboarding: () -> Unit,
@@ -103,6 +117,11 @@ fun SettingsScreen(
     var editingCoordinate by remember { mutableStateOf(false) }
     var editingTerm by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf<String?>(null) }
+    /** 导入功课表的弹层。 */
+    var showImport by remember { mutableStateOf(false) }
+    /** 调试入口：先要口令，通过后再显示调试面板。 */
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var showDebugPanel by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
         HarmonyTopBar(title = "设置", subtitle = "配置与关于")
@@ -339,20 +358,35 @@ fun SettingsScreen(
                         label = "导入课程",
                         value = "${state.courseCount} 门"
                     )
+                    InfoRow(
+                        label = "当前数据来源",
+                        value = if (settings.useTestData) "内置测试数据" else "你自己导入的数据",
+                        valueColor = if (settings.useTestData) CampusColors.Warning
+                        else MaterialTheme.colorScheme.onBackground
+                    )
                     HarmonyDivider()
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HarmonyChip(
+                            text = "导入功课表",
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            onClick = { showImport = true }
+                        )
                         HarmonyChip(
                             text = "校验数据",
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                             contentColor = MaterialTheme.colorScheme.primary,
                             onClick = onValidate
                         )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         HarmonyChip(
-                            text = "恢复示例数据",
+                            text = "清空已导入数据",
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            onClick = { confirmReset = "sample" }
+                            onClick = { confirmReset = "data" }
                         )
                     }
                     if (state.dataProblems.isNotEmpty()) {
@@ -384,6 +418,14 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(6.dp))
                     HarmonyDivider()
+                    // 调试入口：需要口令，防止误触
+                    InfoRow(
+                        label = "调试",
+                        value = if (settings.useTestData) "测试数据：开" else "测试数据：关",
+                        valueColor = if (settings.useTestData) CampusColors.Warning
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = { showPasswordDialog = true }
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "校途把课表、校园平面图和教学楼内导览放在一起，" +
@@ -452,11 +494,12 @@ fun SettingsScreen(
     confirmReset?.let { kind ->
         AlertDialog(
             onDismissRequest = { confirmReset = null },
-            title = { Text(if (kind == "sample") "恢复示例数据？" else "恢复默认设置？") },
+            title = { Text(if (kind == "data") "清空已导入的数据？" else "恢复默认设置？") },
             text = {
                 Text(
-                    if (kind == "sample") {
-                        "将删除你导入的课表与校园数据，并恢复为内置示例学校。此操作不可撤销。"
+                    if (kind == "data") {
+                        "将删除你导入的功课表与校园数据。清空后课表页会提示重新导入；" +
+                            "如果开着「测试数据」，界面仍会显示示例内容。此操作不可撤销。"
                     } else {
                         "主题、导航等个性化设置将回到初始状态。"
                     }
@@ -464,7 +507,7 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (kind == "sample") onResetSample() else onResetSettings()
+                    if (kind == "data") onClearImportedData() else onResetSettings()
                     confirmReset = null
                 }) { Text("确认") }
             },
@@ -473,6 +516,194 @@ fun SettingsScreen(
             }
         )
     }
+
+    // 导入功课表：整页弹层，给预览留足空间
+    if (showImport) {
+        Dialog(onDismissRequest = { showImport = false }) {
+            Surface(
+                shape = RoundedCornerShape(CampusDimens.SheetRadius),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(CampusDimens.PagePadding)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "导入功课表",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "关闭",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { showImport = false }
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 460.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        TimetableImportCard(
+                            campus = campus,
+                            showTitle = false,
+                            onImported = { imported ->
+                                onImportTimetable(imported)
+                                showImport = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // 调试入口：口令
+    if (showPasswordDialog) {
+        DebugPasswordDialog(
+            onDismiss = { showPasswordDialog = false },
+            onConfirm = { input ->
+                if (onCheckDebugPassword(input)) {
+                    showPasswordDialog = false
+                    showDebugPanel = true
+                    true
+                } else {
+                    false
+                }
+            }
+        )
+    }
+
+    // 调试面板
+    if (showDebugPanel) {
+        DebugPanelDialog(
+            useTestData = settings.useTestData,
+            state = state,
+            onToggleTestData = onSetUseTestData,
+            onClearImportedData = onClearImportedData,
+            onDismiss = { showDebugPanel = false }
+        )
+    }
+}
+
+/**
+ * 调试口令输入。
+ *
+ * 口令只是防误触，不当作安全边界；界面上会写明这一点。
+ */
+@Composable
+private fun DebugPasswordDialog(
+    onDismiss: () -> Unit,
+    /** 返回 true 表示口令正确。 */
+    onConfirm: (String) -> Boolean
+) {
+    var text by remember { mutableStateOf("") }
+    var wrong by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("调试入口") },
+        text = {
+            Column {
+                Text(
+                    text = "输入口令后可以开关内置测试数据。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        text = it
+                        wrong = false
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("口令") },
+                    singleLine = true,
+                    isError = wrong,
+                    shape = RoundedCornerShape(CampusDimens.ChipRadius)
+                )
+                if (wrong) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "口令不正确",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CampusColors.Error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { wrong = !onConfirm(text) }) { Text("进入") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}
+
+/** 调试面板：主要就是测试数据开关。 */
+@Composable
+private fun DebugPanelDialog(
+    useTestData: Boolean,
+    state: SettingsUiState,
+    onToggleTestData: (Boolean) -> Unit,
+    onClearImportedData: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("调试面板") },
+        text = {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "测试数据",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "打开后忽略你导入的数据，直接显示内置示例学校与示例课表",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = useTestData,
+                        onCheckedChange = onToggleTestData,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                HarmonyDivider()
+                Spacer(Modifier.height(10.dp))
+                InfoRow(label = "当前来源", value = if (useTestData) "内置测试数据" else "用户导入的数据")
+                InfoRow(label = "课程", value = "${state.courseCount} 门")
+                InfoRow(label = "节次", value = "${state.periodCount} 节")
+                InfoRow(label = "教学楼", value = "${state.buildingCount} 栋")
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "注意：测试数据只是开发/演示用的开关，不涉及你的隐私数据。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onClearImportedData() }) { Text("清空导入数据") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
 }
 
 // ---------------------------------------------------------------- 复用小组件

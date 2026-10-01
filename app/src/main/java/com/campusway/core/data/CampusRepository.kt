@@ -32,6 +32,14 @@ interface CampusRepository {
 
     suspend fun saveCalendar(value: SchoolCalendar)
 
+    /**
+     * 导入一份功课表：课程表与作息一起写入。
+     *
+     * 单独开一个方法而不是让调用方连着调两次 save，是为了保证两者总是同时更新——
+     * 只写课程表不写作息，会出现"课程引用了不存在的节次"。
+     */
+    suspend fun importTimetable(timeTable: TimeTable, courseTable: CourseTable)
+
     /** 恢复为内置示例数据。 */
     suspend fun resetToSample()
 }
@@ -73,6 +81,11 @@ class InMemoryCampusRepository(
 
     override suspend fun saveCalendar(value: SchoolCalendar) {
         calendarState.value = value
+    }
+
+    override suspend fun importTimetable(timeTable: TimeTable, courseTable: CourseTable) {
+        timeState.value = timeTable
+        courseState.value = courseTable
     }
 
     override suspend fun resetToSample() {

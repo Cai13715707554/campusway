@@ -19,7 +19,13 @@ import com.campusway.core.map.OfflineMapProvider
  */
 class AppContainer(private val context: Context) {
 
-    val campusRepository: CampusRepository by lazy { AssetCampusRepository(context) }
+    val campusRepository: CampusRepository by lazy {
+        AssetCampusRepository(
+            context = context,
+            // "测试数据"开关来自设置（默认关闭），决定加载内置示例还是用户自己导入的数据
+            testDataEnabled = { settingsStore.settings.value.useTestData }
+        )
+    }
 
     val settingsStore: SettingsStore by lazy { DataStoreSettingsStore(context) }
 

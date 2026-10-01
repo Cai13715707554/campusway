@@ -155,6 +155,19 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `测试数据默认关闭`() {
+        // 需求：调试里的"测试数据"开关默认关闭，应用只用用户自己导入的数据
+        assertFalse(AppSettings.Default.useTestData)
+    }
+
+    @Test
+    fun `测试数据开关能持久化`() {
+        val on = AppSettings.Default.copy(useTestData = true)
+        val store = InMemorySettingsStore(on)
+        assertEquals(on, store.roundTrip())
+    }
+
+    @Test
     fun `字体缩放档位差距足够明显`() {
         // 早期版本相邻档位只差 10%，实机上几乎看不出变化，
         // 用户会以为"调了没生效"。这里锁住最小可感知的差距。

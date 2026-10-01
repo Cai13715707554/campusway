@@ -157,6 +157,69 @@ class SettingsViewModel(
 
     // ------------------------------------------------------------ 数据
 
+    /**
+     * 导入功课表：课程表与作息一起写入。
+     *
+     * 导入后立刻刷新页面统计，并按需要重载数据（测试数据开关打开时，
+     * 导入的内容会被示例数据盖住，此时给用户一个明确提示）。
+     */
+    fun importTimetable(imported: com.campusway.core.importer.ImportedTimetable) {
+        viewModelScope.launch {
+            if (imported.isEmpty) {
+                detail.value = detail.value.copy(message = "没有解析出课程，未导入")
+                return@launch
+            }
+            repository.importTimetable(imported.timeTable, imported.courseTable)
+            repository.load()
+            refreshDetail()
+            val warning = if (imported.warnings.isEmpty()) "" else "（${imported.warnings.size} 条提示）"
+            detail.value = detail.value.copy(
+                message = if (settingsStore.settings.value.useTestData) {
+                    "已导入，但当前开着「测试数据」，显示的是示例课表"
+                } else {
+                    "导入成功：${imported.summary}$warning"
+                }
+            )
+        }
+    }
+
+    // ------------------------------------------------------------ 调试
+
+    /**
+     * 校验调试入口密码。
+     *
+     * 判断逻辑在 [DebugAccess] 里（纯函数，可单测）；
+     * 这里只做转发，避免把口令判断散落在 UI 里。
+     */
+    fun checkDebugPassword(input: String): Boolean = DebugAccess.check(input)
+
+    /** 开关"测试数据"。切换后会立即重新加载数据。 */
+    fun setUseTestData(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.update { it.copy(useTestData = enabled) }
+            repository.load()
+            refreshDetail()
+            detail.value = detail.value.copy(
+                message = if (enabled) "已打开测试数据：显示内置示例学校与示例课表" else "已关闭测试数据：只显示你自己导入的数据"
+            )
+        }
+    }
+
+    /** 清空用户导入的数据（不会改变测试数据开关）。 */
+    fun clearImportedData() {
+        viewModelScope.launch {
+            repository.resetToSample()
+            refreshDetail()
+            detail.value = detail.value.copy(
+                message = if (settingsStore.settings.value.useTestData) {
+                    "已清空导入数据；当前开着测试数据，仍显示示例内容"
+                } else {
+                    "已清空导入数据，课表页会提示重新导入"
+                }
+            )
+        }
+    }
+
     fun setUserName(name: String) = update { it.copy(userName = name.trim()) }
 
     fun setSchoolName(name: String) = update { it.copy(schoolName = name.trim()) }
