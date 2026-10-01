@@ -207,9 +207,14 @@ fun PeriodTableImportCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "名称是「第 N 节」这种格式的会作为**上课节次**，课程表按它排课；" +
-                        "其余（起床、早餐、大课间、熄灯…）只作为**时间点**在时间表里显示，不影响课程表。\n" +
-                        "不需要的午别整组取消即可（例如不住校可以不显示晚上）；全部取消则会当作没有时间表。",
+                    text = "名称是「第 N 节」这种格式的会作为上课节次，课程表按它排课；" +
+                        "其余（起床、早餐、大课间、熄灯…）只作为时间点在时间表里显示，不影响课程表。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "不需要的午别整组取消即可（例如不住校可以不显示晚上）；全部取消则会当作没有时间表。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

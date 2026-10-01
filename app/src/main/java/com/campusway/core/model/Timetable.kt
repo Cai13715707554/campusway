@@ -214,17 +214,7 @@ data class TimeTable(
     fun allVisibilityKeys(): Set<String> =
         (periods.map { it.visibilityKey } + timePoints.map { it.visibilityKey }).toSet()
 
-    /**
-     * 全部不保留时的结果：一张什么都没有的时间表。
-     *
-     * 应用在"调用时间表的地方"把它当作"没有时间表"处理。
-     */
-    fun cleared(): TimeTable = copy(periods = emptyList())
-
-    /** 是否没有任何节次（= 当作没有时间表）。 */
-    val hasNoPeriods: Boolean get() = periods.isEmpty()
-
-    /** 按午别分组，供"选择显示哪些项目"的界面使用。 */
+    /** 按午别分组的节次（不含时间点）。 */
     fun sectionsWithPeriods(): List<Pair<String, List<Period>>> = groupedBySection()
 
     companion object {
