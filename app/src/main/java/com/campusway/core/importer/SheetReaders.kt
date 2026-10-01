@@ -161,7 +161,9 @@ object SheetReaders {
         for (r in 0 until rows.length) {
             val rowEl = rows.item(r) as? Element ?: continue
             val rowIndex = rowEl.getAttribute("r").toIntOrNull() ?: (r + 1)
-            while (grid.size < rowIndex) grid += mutableListOf()
+            // 用 add 而不是 +=：`grid += mutableListOf()` 会被解析成 plus（返回新 List）
+            // 而不是 plusAssign，结果是"给 val 重新赋值"的编译错误。
+            while (grid.size < rowIndex) grid.add(mutableListOf())
 
             val cells = grid[rowIndex - 1]
             val cellNodes = rowEl.getElementsByTagName("c")
@@ -180,7 +182,9 @@ object SheetReaders {
 
         // 展开合并单元格：把左上角的值铺到整个区域
         mergeRanges.forEach { range ->
-            val value = grid.getOrNull(range.top - 1)?.getOrNull(range.left)?.orEmpty()
+            // 注意这里用 .orEmpty() 而不是 ?.orEmpty()：
+            // orEmpty 本身声明在可空接收者上，再套一层 ?. 会把结果重新变成 String?。
+            val value = grid.getOrNull(range.top - 1)?.getOrNull(range.left).orEmpty()
             if (value.isBlank()) return@forEach
             for (rowIdx in range.top..range.bottom) {
                 val row = grid.getOrNull(rowIdx - 1) ?: continue
