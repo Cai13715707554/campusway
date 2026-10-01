@@ -103,7 +103,13 @@ object PeriodTableParser {
             .filter { row -> row.any { it.isNotBlank() } }
 
         if (rows.isEmpty()) {
-            return ImportedPeriodTable(TimeTable(name = name), emptyList(), listOf("表格是空的"))
+            // 注意用命名参数：ImportedPeriodTable 的字段顺序调整过，
+            // 按位置传参会把"提示列表"错传给 rangedKeys（Set<String>）。
+            return ImportedPeriodTable(
+                timeTable = TimeTable(name = name),
+                sections = emptyList(),
+                warnings = listOf("表格是空的")
+            )
         }
 
         val warnings = mutableListOf<String>()
@@ -134,7 +140,9 @@ object PeriodTableParser {
         val dataRows = rows.drop(if (headerIndex >= 0) headerIndex + 1 else 0)
 
         // 2) 读成 (午别, 项目, 起始分钟, 结束分钟?)
-        data class Raw(val section: String, val name: String, val start: Int?, val end: Int?)
+        // start 用非空 Int：只有解析出开始时间才会构造 Raw，
+        // 声明成 Int? 会让后面每次用到都要判空。
+        data class Raw(val section: String, val name: String, val start: Int, val end: Int?)
 
         val raws = mutableListOf<Raw>()
         var lastSection = ""
@@ -151,19 +159,24 @@ object PeriodTableParser {
             }
             if (rawName.isBlank()) return@forEach
 
-            val (start, end) = parseTime(timeText)
-            if (start == null) {
+            val (startMinute, endMinute) = parseTime(timeText)
+            if (startMinute == null) {
                 warnings += "「$rawName」的时间无法识别（$timeText），已跳过"
                 return@forEach
             }
-            raws += Raw(section = section.ifBlank { "未分组" }, name = rawName, start = start, end = end)
+            raws += Raw(
+                section = section.ifBlank { "未分组" },
+                name = rawName,
+                start = startMinute,
+                end = endMinute
+            )
         }
 
         if (raws.isEmpty()) {
             return ImportedPeriodTable(
-                TimeTable(name = name),
-                emptyList(),
-                warnings + "没有解析到任何项目，请检查「项目」「时间」两列"
+                timeTable = TimeTable(name = name),
+                sections = emptyList(),
+                warnings = warnings + "没有解析到任何项目，请检查「项目」「时间」两列"
             )
         }
 

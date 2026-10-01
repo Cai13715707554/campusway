@@ -93,7 +93,12 @@ object TimetableGridParser {
     ): ImportedTimetable {
         val rows = normalise(grid)
         if (rows.isEmpty()) {
-            return ImportedTimetable(defaultTimes, CourseTable(), listOf("表格是空的"))
+            // 统一用命名参数：位置传参在字段顺序调整后会静默错位
+            return ImportedTimetable(
+                timeTable = defaultTimes,
+                courseTable = CourseTable(),
+                warnings = listOf("表格是空的")
+            )
         }
 
         val warnings = mutableListOf<String>()
