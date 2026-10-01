@@ -2,6 +2,7 @@ package com.campusway.core.importer
 
 import com.campusway.core.model.Period
 import com.campusway.core.model.TimeOfDay
+import com.campusway.core.model.TimePoint
 import com.campusway.core.model.TimeTable
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -13,36 +14,30 @@ data class ImportedPeriodTable(
     val timeTable: TimeTable,
     /** 识别到的午别，按出现顺序。 */
     val sections: List<String>,
-    /**
-     * 表格里本身就写了起止时间的项目键。
-     *
-     * 「第一节 8:00——8:45」这种是有明确区间的；「起床 06:40」只是一个时点。
-     * 用来在没有可识别的"节次名"时兜底预勾选。
-     */
-    val rangedKeys: Set<String> = emptySet(),
     val warnings: List<String> = emptyList()
 ) {
-    val isEmpty: Boolean get() = timeTable.periods.isEmpty()
+    val isEmpty: Boolean get() = timeTable.isEmpty
 
+    /** 上课节次数量。 */
     val periodCount: Int get() = timeTable.periods.size
 
+    /** 时间点数量（起床、大课间、熄灯这类，只在时间表里显示）。 */
+    val timePointCount: Int get() = timeTable.timePoints.size
+
+    /** 所有项目的数量。 */
+    val totalCount: Int get() = periodCount + timePointCount
+
     val summary: String
-        get() = "识别到 ${sections.size} 个午别（${sections.joinToString("、")}）、$periodCount 个项目"
+        get() = "识别到 ${sections.size} 个午别（${sections.joinToString("、")}）、" +
+            "$periodCount 个上课节次、$timePointCount 个时间点"
 
     /**
-     * 默认勾选哪些项目。
+     * 默认勾选哪些项目：**全部**。
      *
-     * 优先选"像上课节次"的（第一节、晚修第二节…），这样课程能直接挂到正确的节次上；
-     * 一个都没有时退回"表格里写了起止时间的项目"；再没有就全选。
+     * 因为时间点已经不影响课程表了，全勾上最直观（用户看到的作息表最完整），
+     * 想精简就整组取消某个午别。
      */
-    fun defaultSelection(): Set<String> {
-        val likely = timeTable.periods.filter { likelyClassPeriod(it.name) }.map { it.visibilityKey }.toSet()
-        return when {
-            likely.isNotEmpty() -> likely
-            rangedKeys.isNotEmpty() -> rangedKeys
-            else -> timeTable.periods.map { it.visibilityKey }.toSet()
-        }
-    }
+    fun defaultSelection(): Set<String> = timeTable.allVisibilityKeys()
 }
 
 /**
@@ -103,8 +98,8 @@ object PeriodTableParser {
             .filter { row -> row.any { it.isNotBlank() } }
 
         if (rows.isEmpty()) {
-            // 注意用命名参数：ImportedPeriodTable 的字段顺序调整过，
-            // 按位置传参会把"提示列表"错传给 rangedKeys（Set<String>）。
+            // 统一用命名参数：这个类的字段顺序调整过一次，
+            // 当时按位置传参把"提示列表"错传给了另一个 Set 字段，编译不过。
             return ImportedPeriodTable(
                 timeTable = TimeTable(name = name),
                 sections = emptyList(),
@@ -180,12 +175,21 @@ object PeriodTableParser {
             )
         }
 
-        // 3) 补全结束时间：只有时点的项目用下一项的开始时间收尾，最后一项 +10 分钟
-        val periods = raws.mapIndexed { index, raw ->
-            val end = raw.end ?: raws.getOrNull(index + 1)?.start?.takeIf { it > raw.start }
-                ?: (raw.start + DEFAULT_TAIL_MINUTES)
+        // 3) 分成"上课节次"与"时间点"两类。
+        //    只有名称是「第 N 节」这种格式的才算上课节次（课程挂在它上面）；
+        //    起床/早餐/大课间/熄灯这类只作为时间点，仅在时间表里显示，不影响课程表。
+        val classRaws = raws.filter { likelyClassPeriod(it.name) }
+        val pointRaws = raws.filterNot { likelyClassPeriod(it.name) }
+
+        // 上课节次需要起止时间：表格里没写结束时间时，用下一项的起始时间收尾
+        //（注意用完整序列找"下一项"，这样 教师上办公 07:10 → 晨练 07:40 也能算对）。
+        val periods = classRaws.mapIndexed { i, raw ->
+            val rawIndex = raws.indexOf(raw)
+            val explicitEnd = raw.end
+            val fromNext = raws.getOrNull(rawIndex + 1)?.start?.takeIf { it > raw.start }
+            val end = explicitEnd ?: fromNext ?: (raw.start + DEFAULT_TAIL_MINUTES)
             Period(
-                index = index + 1,
+                index = i + 1,
                 name = raw.name,
                 start = TimeOfDay.format(raw.start),
                 end = TimeOfDay.format(if (end > raw.start) end else raw.start + 5),
@@ -193,14 +197,22 @@ object PeriodTableParser {
             )
         }
 
-        val timeTable = TimeTable(name = name, periods = periods)
+        // 时间点只展示时刻：表格里写了区间的就显示区间，否则只显示一个时间
+        val timePoints = pointRaws.map { raw ->
+            TimePoint(
+                name = raw.name,
+                start = TimeOfDay.format(raw.start),
+                end = raw.end?.takeIf { it > raw.start }?.let { TimeOfDay.format(it) }.orEmpty(),
+                section = raw.section
+            )
+        }
+
+        val timeTable = TimeTable(name = name, periods = periods, timePoints = timePoints)
         warnings += timeTable.validate()
 
         return ImportedPeriodTable(
             timeTable = timeTable,
-            sections = periods.map { it.section }.distinct(),
-            // 明确写了起止时间的项目（raws 里 end 不为空的那些）
-            rangedKeys = raws.filter { it.end != null }.map { "${it.section}|${it.name}" }.toSet(),
+            sections = raws.map { it.section }.distinct(),
             warnings = warnings.distinct()
         )
     }

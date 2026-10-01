@@ -196,11 +196,12 @@ class SettingsViewModel(
             repository.load()
             refreshDetail()
             detail.value = detail.value.copy(
-                message = if (timeTable.hasNoPeriods) {
+                message = if (timeTable.isEmpty) {
                     "已按「没有时间表」处理：课表页会显示占位图"
                 } else {
-                    "时间表导入成功：${timeTable.periods.size} 个节次，" +
-                        "午别 ${timeTable.sectionsWithPeriods().joinToString("、") { it.first }}"
+                    "时间表导入成功：${timeTable.periods.size} 个上课节次、" +
+                        "${timeTable.timePoints.size} 个时间点；" +
+                        "午别 ${timeTable.rowGroups().joinToString("、") { it.first }}"
                 }
             )
         }

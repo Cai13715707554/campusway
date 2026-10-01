@@ -52,13 +52,65 @@ data class Period(
 }
 
 /**
+ * 作息里的"时间点"。
+ *
+ * 起床、早餐、教师上办公、大课间、熄灯这类项目只是时间点（或生活作息），
+ * **不是上课节次**：它们只在"课程时间表"里展示，
+ * 不参与课程表（不占节次序号、不生成课表行）。
+ *
+ * 判断规则见 `likelyClassPeriod`：名称不是「第N节」这种格式的，都归到这里。
+ */
+@Serializable
+data class TimePoint(
+    val name: String,
+    val start: String,
+    /** 可选结束时间，没有就只显示一个时刻。 */
+    val end: String = "",
+    val section: String = ""
+) {
+    /** 展示用的时间文本，例如 `06:40` 或 `07:40 - 07:55`。 */
+    val timeText: String get() = if (end.isBlank()) start else "$start - $end"
+
+    /** 与 [Period.visibilityKey] 同一套键，用于"显示哪些项目"的选择。 */
+    val visibilityKey: String get() = "$section|$name"
+
+    val startMinuteOfDay: Int get() = TimeOfDay.parseToMinutes(start)
+}
+
+/**
+ * 时间表里的一行：可能是上课节次，也可能只是一个时间点。
+ *
+ * 界面只需要按这个统一结构渲染，"是不是节次"由 [isClassPeriod] 决定
+ * （非节次的行会显示得淡一些，并且不写"第 N 节"）。
+ */
+data class TimeTableRow(
+    val section: String,
+    val label: String,
+    val timeText: String,
+    val isClassPeriod: Boolean,
+    /** 节次序号；时间点为 null。 */
+    val periodIndex: Int?,
+    /** 排序用：当天的分钟数，解析不出来时排在最后。 */
+    val order: Int,
+    /** 与 [Period.visibilityKey] / [TimePoint.visibilityKey] 一致，用于显示选择。 */
+    val visibilityKey: String
+)
+
+/**
  * 课程时间表：全校统一的一份节次划分。
+ *
+ * 分为两部分：
+ *  - [periods]：**上课节次**，序号从 1 连续编号，课程表按它排课；
+ *  - [timePoints]：起床/早餐/大课间/熄灯这类时间点，只在时间表里展示。
+ *
+ * 这样导入学校的作息表时，"一天 23 项"不会把课程表撑成 23 行。
  */
 @Serializable
 data class TimeTable(
     /** 时间表名称，例如“冬季作息”“夏季作息”。 */
     val name: String = "默认作息",
-    val periods: List<Period> = emptyList()
+    val periods: List<Period> = emptyList(),
+    val timePoints: List<TimePoint> = emptyList()
 ) {
     private val byIndex: Map<Int, Period> by lazy { periods.associateBy { it.index } }
 
@@ -98,19 +150,72 @@ data class TimeTable(
     // ---------------------------------------------------------------- 显示选择
 
     /**
-     * 只保留 [keys] 里的项目，并**重新编号**为 1..K。
+     * 只保留 [keys] 里的项目。
      *
-     * 为什么要重新编号：功课表里的课程是按"节次序号"挂上去的，
-     * 序号必须从 1 连续，否则课程会挂到空档上（表现为课表里出现莫名其妙的空行）。
-     * 用户在导入时间表时选择保留哪些项目，得到的就应该是这样一张紧凑的时间表。
+     * 节次会**重新编号**为 1..K：课程是按"节次序号"挂上去的，
+     * 序号必须连续，否则课程会挂到空档上（表现为课表里出现莫名其妙的空行）。
+     * 时间点不参与编号，只按选择保留/去掉。
      */
-    fun keepingKeys(keys: Collection<String>): TimeTable {
-        val kept = periods.filter { it.visibilityKey in keys }
-        return copy(periods = kept.mapIndexed { i, p -> p.copy(index = i + 1) })
-    }
+    fun keepingKeys(keys: Collection<String>): TimeTable = copy(
+        periods = periods.filter { it.visibilityKey in keys }
+            .mapIndexed { i, p -> p.copy(index = i + 1) },
+        timePoints = timePoints.filter { it.visibilityKey in keys }
+    )
+
+    /** 清空（彩蛋确认后按"没有时间表"处理）。 */
+    fun cleared(): TimeTable = copy(periods = emptyList(), timePoints = emptyList())
+
+    /** 节次与时间点都没有。 */
+    val isEmpty: Boolean get() = periods.isEmpty() && timePoints.isEmpty()
+
+    /** 没有任何上课节次（课表会是空的，但可能还有时间点要展示）。 */
+    val hasNoPeriods: Boolean get() = periods.isEmpty()
 
     /**
-     * 全部不保留时的结果：一张没有节次的时间表。
+     * 时间表的展示行：节次与时间点合并后按时间排序。
+     *
+     * [TimeTableRow.isClassPeriod] 用来区分两者：非节次的行在界面上显示得淡一些，
+     * 并且不写"第 N 节"。
+     */
+    fun rows(): List<TimeTableRow> {
+        val periodRows = periods.map { period ->
+            TimeTableRow(
+                section = period.section.ifBlank { "其他" },
+                label = period.name,
+                timeText = "${period.start} - ${period.end}",
+                isClassPeriod = true,
+                periodIndex = period.index,
+                order = period.startMinuteOfDay.takeIf { it >= 0 } ?: Int.MAX_VALUE,
+                visibilityKey = period.visibilityKey
+            )
+        }
+        val pointRows = timePoints.map { point ->
+            TimeTableRow(
+                section = point.section.ifBlank { "其他" },
+                label = point.name,
+                timeText = point.timeText,
+                isClassPeriod = false,
+                periodIndex = null,
+                order = point.startMinuteOfDay.takeIf { it >= 0 } ?: Int.MAX_VALUE,
+                visibilityKey = point.visibilityKey
+            )
+        }
+        return (periodRows + pointRows).sortedBy { it.order }
+    }
+
+    /** 展示行按午别分组（保持首次出现的顺序）。 */
+    fun rowGroups(): List<Pair<String, List<TimeTableRow>>> {
+        val order = LinkedHashMap<String, MutableList<TimeTableRow>>()
+        rows().forEach { row -> order.getOrPut(row.section) { mutableListOf() }.add(row) }
+        return order.map { it.key to it.value.toList() }
+    }
+
+    /** 节次与时间点的全部键，用于"显示哪些项目"的全选。 */
+    fun allVisibilityKeys(): Set<String> =
+        (periods.map { it.visibilityKey } + timePoints.map { it.visibilityKey }).toSet()
+
+    /**
+     * 全部不保留时的结果：一张什么都没有的时间表。
      *
      * 应用在"调用时间表的地方"把它当作"没有时间表"处理。
      */

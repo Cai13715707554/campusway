@@ -44,6 +44,7 @@ import com.campusway.core.model.Campus
 import com.campusway.core.model.LessonStatus
 import com.campusway.core.model.Period
 import com.campusway.core.model.TimetableAxis
+import com.campusway.core.model.TimeTableRow
 import com.campusway.core.model.TodayLesson
 import com.campusway.ui.components.EmptyState
 import com.campusway.ui.components.HarmonyCard
@@ -445,17 +446,27 @@ private fun StatusChip(lesson: TodayLesson) {
  * 课程时间表。
  *
  * 需求要求时间表与课程表**分开显示**，这里就是独立的一张“课程时间表”。
+ *
+ * 表里有两类行：
+ *  - **上课节次**（第 N 节这类）：课程表按它排课，这里用"第 N 节"和深色展示；
+ *  - **时间点**（起床、早餐、大课间、熄灯…）：只是作息参考，显示得淡一些，
+ *    不占节次序号、也不会出现在课程表里。
  */
 @Composable
 private fun TimeTableCard(data: TimetableViewData) {
+    val periodCount = data.timeTable.periods.size
+    val pointCount = data.timeTable.timePoints.size
+    val subtitle = buildString {
+        append(data.timeTable.name)
+        append(" · 共 ").append(periodCount).append(" 节")
+        if (pointCount > 0) append("、").append(pointCount).append(" 个时间点")
+    }
+
     Column(modifier = Modifier.padding(top = 8.dp)) {
-        SectionHeader(
-            title = "课程时间表",
-            subtitle = "${data.timeTable.name} · 共 ${data.timeTable.periods.size} 节"
-        )
+        SectionHeader(title = "课程时间表", subtitle = subtitle)
         Spacer(Modifier.height(8.dp))
         HarmonyCard {
-            data.periodSections.forEachIndexed { sectionIndex, (section, periods) ->
+            data.timeTableRows.forEachIndexed { sectionIndex, (section, rows) ->
                 if (sectionIndex > 0) {
                     Spacer(Modifier.height(10.dp))
                     HarmonyDivider()
@@ -467,22 +478,35 @@ private fun TimeTableCard(data: TimetableViewData) {
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.height(6.dp))
-                periods.forEach { period ->
-                    PeriodRow(period = period, axis = data.axis)
+                rows.forEach { row ->
+                    TimeTableRowItem(row = row, axis = data.axis)
                 }
             }
-            if (data.timeTable.periods.isEmpty()) {
-                EmptyState(text = "还没有时间表数据", hint = "可在设置中导入")
+            if (data.timeTable.isEmpty) {
+                EmptyState(text = "还没有时间表数据", hint = "可在设置里导入时间表")
             }
         }
     }
 }
 
+/**
+ * 时间表里的一行。
+ *
+ * 时间点用更淡的文字，并在右侧标注「时间点」，避免被误认为上课节次。
+ */
 @Composable
-private fun PeriodRow(period: Period, axis: TimetableAxis) {
+private fun TimeTableRowItem(row: TimeTableRow, axis: TimetableAxis) {
     val now = java.time.LocalTime.now()
-    val isNow = period.isValid &&
-        now.hour * 60 + now.minute in period.startMinuteOfDay until period.endMinuteOfDay
+    val nowMinutes = now.hour * 60 + now.minute
+    val startMinutes = com.campusway.core.model.TimeOfDay.parseToMinutes(
+        row.timeText.substringBefore('-').trim()
+    )
+    // 只有上课节次才做"当前时段"高亮
+    val isNow = row.isClassPeriod && startMinutes >= 0 && run {
+        val endText = row.timeText.substringAfter('-', "").trim()
+        val endMinutes = com.campusway.core.model.TimeOfDay.parseToMinutes(endText)
+        endMinutes > startMinutes && nowMinutes in startMinutes until endMinutes
+    }
 
     Row(
         modifier = Modifier
@@ -496,23 +520,38 @@ private fun PeriodRow(period: Period, axis: TimetableAxis) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = if (axis == TimetableAxis.PERIOD) "第 ${period.index} 节" else period.name,
+            // 节次按设置显示"第 N 节"或名称；时间点始终显示名称
+            text = if (row.isClassPeriod && axis == TimetableAxis.PERIOD) {
+                "第 ${row.periodIndex ?: 0} 节"
+            } else {
+                row.label
+            },
             style = MaterialTheme.typography.bodyMedium,
-            color = if (isNow) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.width(74.dp)
+            color = when {
+                isNow -> MaterialTheme.colorScheme.primary
+                row.isClassPeriod -> MaterialTheme.colorScheme.onBackground
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.width(96.dp)
         )
         Text(
-            text = "${period.start} - ${period.end}",
+            text = row.timeText,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (row.isClassPeriod) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
         Spacer(Modifier.weight(1f))
         if (isNow) {
             HarmonyChip(text = "当前时段")
+        } else if (!row.isClassPeriod) {
+            Text(
+                text = "时间点",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
         } else {
             Text(
-                text = "${period.durationMinutes} 分钟",
+                text = row.label,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -701,10 +740,12 @@ private const val PLACEHOLDER_IMAGE_URL = "https://img-api.pipw.top/?phone=true"
  *
  * 需求：全部不显示时当作彩蛋，确认后凡是要用时间表的地方都按"没有时间表"处理，
  * 而原本显示时间表的位置改显示上面这个接口的图片。
- * 图片会缓存在本机，联网看过一次之后离线也能显示。
+ * 图片**不做磁盘缓存**，所以退出软件重进会重新加载（每次都是新的一张）。
  */
 @Composable
 private fun NoTimetablePlaceholder() {
+    var reloadKey by remember { mutableIntStateOf(0) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -734,19 +775,34 @@ private fun NoTimetablePlaceholder() {
         Spacer(Modifier.height(12.dp))
 
         HarmonyCard {
-            Text(
-                text = "占位图",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "占位图（每次进入重新加载）",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "换一张",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(CampusDimens.ChipRadius))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                        .clickable { reloadKey++ }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+            }
             Spacer(Modifier.height(8.dp))
             RemoteImage(
                 url = PLACEHOLDER_IMAGE_URL,
                 contentDescription = "占位图",
-                minHeight = 200
+                minHeight = 200,
+                reloadKey = reloadKey
             ) {
                 Text(
-                    text = "占位图需要联网加载，连上网后会自动显示（看过一次之后离线也能显示）。",
+                    text = "图片需要联网加载，连上网后会自动显示；这里不做本地缓存，" +
+                        "每次进入都会重新加载。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

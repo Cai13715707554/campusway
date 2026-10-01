@@ -43,8 +43,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.campusway.core.importer.AndroidSheetImport
 import com.campusway.core.importer.ImportedPeriodTable
-import com.campusway.core.model.Period
 import com.campusway.core.model.TimeTable
+import com.campusway.core.model.TimeTableRow
 import com.campusway.ui.components.HarmonyCard
 import com.campusway.ui.components.HarmonyDivider
 import com.campusway.ui.theme.CampusColors
@@ -207,34 +207,38 @@ fun PeriodTableImportCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "勾选的项目会成为课表里的节次。不需要的午别整组取消即可（例如不住校可以不显示晚上）；" +
-                        "全部取消也可以，那就会当作没有时间表。已按「第几节」这类名称帮你预勾选。",
+                    text = "名称是「第 N 节」这种格式的会作为**上课节次**，课程表按它排课；" +
+                        "其余（起床、早餐、大课间、熄灯…）只作为**时间点**在时间表里显示，不影响课程表。\n" +
+                        "不需要的午别整组取消即可（例如不住校可以不显示晚上）；全部取消则会当作没有时间表。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(Modifier.height(8.dp))
-                imported.timeTable.sectionsWithPeriods().forEach { (section, periods) ->
+                imported.timeTable.rowGroups().forEach { (section, rows) ->
                     SectionToggleGroup(
                         section = section,
-                        periods = periods,
+                        rows = rows,
                         selectedKeys = selectedKeys,
                         onToggleSection = { selectAll ->
-                            val keys = periods.map { it.visibilityKey }.toSet()
+                            val keys = rows.map { it.visibilityKey }.toSet()
                             selectedKeys = if (selectAll) selectedKeys + keys else selectedKeys - keys
                         },
-                        onTogglePeriod = { period, selected ->
-                            selectedKeys = if (selected) selectedKeys + period.visibilityKey
-                            else selectedKeys - period.visibilityKey
+                        onToggleRow = { row, selected ->
+                            selectedKeys = if (selected) selectedKeys + row.visibilityKey
+                            else selectedKeys - row.visibilityKey
                         }
                     )
                     Spacer(Modifier.height(8.dp))
                 }
 
-                val total = imported.timeTable.periods.size
-                val selectedCount = imported.timeTable.periods.count { it.visibilityKey in selectedKeys }
+                val allRows = imported.timeTable.rows()
+                val selectedCount = allRows.count { it.visibilityKey in selectedKeys }
+                val selectedPeriods = allRows.count { it.isClassPeriod && it.visibilityKey in selectedKeys }
+                val selectedPoints = selectedCount - selectedPeriods
                 Text(
-                    text = "将保留 $selectedCount / $total 项作为节次",
+                    text = if (selectedCount == 0) "将不保留任何项目（当作没有时间表）"
+                    else "将保留 $selectedCount 项：$selectedPeriods 个上课节次、$selectedPoints 个时间点",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (selectedCount == 0) CampusColors.Warning
                     else MaterialTheme.colorScheme.onSurfaceVariant
@@ -299,16 +303,16 @@ fun PeriodTableImportCard(
     }
 }
 
-/** 一个午别分组：标题 + 整组开关 + 组内每一项的勾选。 */
+/** 一个午别分组：标题 + 整组开关 + 组内每一项的勾选（并标明是节次还是时间点）。 */
 @Composable
 private fun SectionToggleGroup(
     section: String,
-    periods: List<Period>,
+    rows: List<TimeTableRow>,
     selectedKeys: Set<String>,
     onToggleSection: (Boolean) -> Unit,
-    onTogglePeriod: (Period, Boolean) -> Unit
+    onToggleRow: (TimeTableRow, Boolean) -> Unit
 ) {
-    val allSelected = periods.all { it.visibilityKey in selectedKeys }
+    val allSelected = rows.all { it.visibilityKey in selectedKeys }
 
     Column(
         modifier = Modifier
@@ -343,27 +347,34 @@ private fun SectionToggleGroup(
                 )
             )
         }
-        periods.forEach { period ->
+        rows.forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Checkbox(
-                    checked = period.visibilityKey in selectedKeys,
-                    onCheckedChange = { checked -> onTogglePeriod(period, checked) }
+                    checked = row.visibilityKey in selectedKeys,
+                    onCheckedChange = { checked -> onToggleRow(row, checked) }
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = period.name,
+                        text = row.label,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "${period.start} - ${period.end}",
+                        text = row.timeText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                // 标明分类：节次会参与课程表，时间点只在时间表里显示
+                Text(
+                    text = if (row.isClassPeriod) "节次" else "时间点",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (row.isClassPeriod) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
             }
         }
     }

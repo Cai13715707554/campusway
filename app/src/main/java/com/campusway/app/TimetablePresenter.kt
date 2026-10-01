@@ -9,6 +9,7 @@ import com.campusway.core.model.Period
 import com.campusway.core.model.RoomLocation
 import com.campusway.core.model.SchoolCalendar
 import com.campusway.core.model.TimeTable
+import com.campusway.core.model.TimeTableRow
 import com.campusway.core.model.TodayLesson
 import com.campusway.core.model.TodaySchedule
 import com.campusway.core.model.TimetableAxis
@@ -47,8 +48,13 @@ data class TimetableViewData(
     /** 整周视图：星期几(1..7) -> 该天课程，按节次升序。 */
     val weekLessons: Map<Int, List<TodayLesson>>,
     val timeTable: TimeTable,
-    /** 时间表分组（上午/下午/晚上）。 */
-    val periodSections: List<Pair<String, List<Period>>>,
+    /**
+     * 时间表的展示行（上课节次 + 时间点，按午别分组）。
+     *
+     * 时间点（起床/大课间/熄灯…）只在这里显示，不参与课程表，
+     * 所以整周课表只会有上课节次那几行。
+     */
+    val timeTableRows: List<Pair<String, List<TimeTableRow>>>,
     val courses: Map<String, Course>,
     val axis: TimetableAxis,
     val showUpcomingReminder: Boolean,
@@ -155,7 +161,7 @@ object TimetablePresenter {
             nextLesson = TodaySchedule.next(todayLessons),
             weekLessons = weekLessons,
             timeTable = timeTable,
-            periodSections = timeTable.groupedBySection(),
+            timeTableRows = timeTable.rowGroups(),
             courses = table.courses.associateBy { it.id },
             axis = settings.timetableAxis,
             showUpcomingReminder = settings.showUpcomingReminder,
@@ -163,7 +169,7 @@ object TimetablePresenter {
             emptyHint = emptyHintFor(todayLessons),
             todayModeActive = state.todayMode,
             weekOffset = state.weekOffset,
-            noVisibleTimetable = timeTable.hasNoPeriods
+            noVisibleTimetable = timeTable.isEmpty
         )
     }
 

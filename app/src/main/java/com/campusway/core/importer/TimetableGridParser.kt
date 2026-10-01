@@ -243,7 +243,10 @@ object TimetableGridParser {
         val maxPeriodIndex = periods.maxOfOrNull { it.index } ?: 0
         val finalTimeTable = TimeTable(
             name = defaultTimes.name,
-            periods = periods.sortedBy { it.index }.ifEmpty { defaultTimes.periods }
+            periods = periods.sortedBy { it.index }.ifEmpty { defaultTimes.periods },
+            // 保留已有的时间点（起床/大课间/熄灯…）：导入功课表不该把它们弄丢，
+            // 它们只在时间表里展示，与课程无关。
+            timePoints = defaultTimes.timePoints
         ).let { table ->
             // 保证每个节次都有合法时间
             table.copy(periods = table.periods.map { it.ensureValid(defaultTimes) })

@@ -187,7 +187,7 @@ class TimetablePresenterTest {
     @Test
     fun `时间表按上午下午分组`() {
         val data = TimetablePresenter.build(state(LocalTime.of(9, 0)), table, timeTable, calendar, AppSettings.Default)
-        assertEquals(listOf("上午", "下午"), data.periodSections.map { it.first })
+        assertEquals(listOf("上午", "下午"), data.timeTableRows.map { it.first })
     }
 
     @Test
@@ -226,7 +226,7 @@ class TimetablePresenterTest {
         assertFalse(week.todayModeActive)
         assertEquals(7, week.weekLessons.size)
         // 时间表在两种模式下都要能拿到，因为它是独立展示的一块
-        assertTrue(week.periodSections.isNotEmpty())
+        assertTrue(week.timeTableRows.isNotEmpty())
     }
 
     @Test

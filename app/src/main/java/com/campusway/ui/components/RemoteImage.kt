@@ -34,11 +34,12 @@ import java.net.URL
  * 远程图片，用于"时间表全部不显示"时替换时间表的位置。
  *
  * 为什么不引第三方图片库（Coil 等）：
- * 这里只需要"下载一张图 + 显示 + 缓存"这一件事，写一百来行就够，
+ * 这里只需要"下载一张图 + 显示"这一件事，写几十行就够，
  * 不必为此引入一个依赖（也与工程"依赖尽量少、离线可构建"的取向一致）。
  *
- * 缓存策略：内存 → 磁盘（cacheDir）→ 网络。
- * 下载成功后会写入磁盘，所以**联网看过一次之后，之后离线也能显示**。
+ * **不做磁盘缓存**（需求要求退出软件重进要重新加载）：
+ * 只在内存里缓存当前进程内的那一张，进程结束即失效，
+ * 下次启动会重新请求，所以每次进来看到的都是新图。
  */
 @Composable
 fun RemoteImage(
@@ -46,18 +47,20 @@ fun RemoteImage(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     minHeight: Int = 180,
+    /** 用来触发"换一张"：值变化就重新下载。 */
+    reloadKey: Int = 0,
     fallback: @Composable () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var bitmap by remember(url) { mutableStateOf(RemoteImageLoader.fromMemory(url)) }
+    var bitmap by remember(url) { mutableStateOf<Bitmap?>(null) }
     var failed by remember(url) { mutableStateOf(false) }
 
-    LaunchedEffect(url) {
-        if (bitmap != null) return@LaunchedEffect
-        val loaded = RemoteImageLoader.load(context, url)
+    LaunchedEffect(url, reloadKey) {
+        failed = false
+        bitmap = null
+        val loaded = RemoteImageLoader.loadFresh(context, url)
         if (loaded != null) {
             bitmap = loaded
-            failed = false
         } else {
             failed = true
         }
@@ -98,7 +101,7 @@ fun RemoteImage(
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                text = "正在加载占位图…",
+                text = "正在加载图片…",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
@@ -108,52 +111,37 @@ fun RemoteImage(
 }
 
 /**
- * 远程图片的加载与缓存。
+ * 远程图片的加载。
+ *
+ * 只在内存缓存当前进程的一张图；**不写磁盘**，
+ * 这样退出软件重进时一定会重新请求（需求要求"重进要刷新"）。
  */
 object RemoteImageLoader {
 
     private const val TIMEOUT_MS = 10_000
 
-    /** 内存缓存，避免同一张图反复解码。 */
+    /** 进程内缓存：同一次启动里切来切去不重复下载。 */
     private val memory = mutableMapOf<String, Bitmap>()
 
-    fun fromMemory(url: String): Bitmap? = memory[url]
+    /** 老版本写过磁盘缓存，清掉，避免"重进还是旧图"。 */
+    private fun clearLegacyDiskCache(context: Context) {
+        runCatching { File(context.cacheDir, "remote_images").deleteRecursively() }
+    }
 
-    /** 依次尝试：内存 → 磁盘 → 网络。失败返回 null。 */
-    suspend fun load(context: Context, url: String): Bitmap? = withContext(Dispatchers.IO) {
-        memory[url]?.let { return@withContext it }
-
-        val file = cacheFile(context, url)
-
-        // 磁盘缓存（上次联网看过就有）
-        if (file.exists()) {
-            decode(file.readBytes())?.let {
-                memory[url] = it
-                return@withContext it
-            }
-            runCatching { file.delete() }
-        }
-
-        // 网络
+    /**
+     * 强制重新下载（用于"换一张"以及每次进入页面）。
+     */
+    suspend fun loadFresh(context: Context, url: String): Bitmap? = withContext(Dispatchers.IO) {
+        clearLegacyDiskCache(context)
+        memory.remove(url)
         val bytes = runCatching { httpGet(url) }.getOrNull() ?: return@withContext null
         val bitmap = decode(bytes) ?: return@withContext null
         memory[url] = bitmap
-        runCatching { file.writeBytes(bytes) }
         bitmap
     }
 
-    /** 清掉缓存（设置里的"清除离线地图缓存"会顺带调用）。 */
-    fun clear(context: Context) {
-        memory.clear()
-        runCatching { cacheDir(context).deleteRecursively() }
-    }
-
-    private fun cacheDir(context: Context) = File(context.cacheDir, "remote_images")
-
-    private fun cacheFile(context: Context, url: String): File {
-        val dir = cacheDir(context).apply { mkdirs() }
-        return File(dir, "img_${url.hashCode().toUInt().toString(16)}.bin")
-    }
+    /** 只读内存缓存，不发起请求。 */
+    fun fromMemory(url: String): Bitmap? = memory[url]
 
     private fun decode(bytes: ByteArray): Bitmap? =
         runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
@@ -163,8 +151,9 @@ object RemoteImageLoader {
             requestMethod = "GET"
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS
-            // 这个接口按 UA/参数返回图片，带上标识便于服务端区分
-            setRequestProperty("User-Agent", "CampusWay/0.2 (Android)")
+            // 带上标识便于服务端区分；加时间戳参数避免中间层缓存同一张图
+            setRequestProperty("User-Agent", "CampusWay/0.3 (Android)")
+            setRequestProperty("Cache-Control", "no-cache")
             try {
                 val code = responseCode
                 if (code !in 200..299) error("HTTP $code")
