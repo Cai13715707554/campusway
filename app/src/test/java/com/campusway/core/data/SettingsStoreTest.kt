@@ -25,9 +25,10 @@ class SettingsStoreTest {
         val defaults = AppSettings.Default
         assertEquals(ThemeMode.SYSTEM, defaults.themeMode)
         assertEquals(FontScale.NORMAL, defaults.fontScale)
-        assertEquals(NavProviders.OFFLINE, defaults.navProvider)
+        assertEquals(NavProviders.AMAP, defaults.navProvider)
         assertFalse(defaults.onboardingCompleted)
         assertFalse(defaults.schoolHasGeo)
+        assertFalse(defaults.hasAnyKey)
     }
 
     @Test
@@ -97,17 +98,20 @@ class SettingsStoreTest {
     }
 
     @Test
-    fun `未选离线服务商时离线能力说明正确`() {
-        assertEquals(
-            "离线模式：课表、校园平面图与楼内导览全部可用",
-            AppSettings.Default.copy(navProvider = NavProviders.OFFLINE).offlineCapabilityText
-        )
+    fun `界面可选的导航服务商不含离线估算`() {
+        // 需求：界面上去掉「离线估算」这个选项——它只是没网时的自动降级，
+        // 不是一种可供选择的模式，否则用户可能误选后楼外导航永远不联网。
+        assertFalse(NavProviders.selectable.contains(NavProviders.OFFLINE))
+        assertEquals(listOf(NavProviders.AMAP, NavProviders.TENCENT), NavProviders.selectable)
+        // 兜底实现本身仍然存在，供自动降级使用
+        assertTrue(NavProviders.all.contains(NavProviders.OFFLINE))
     }
 
     @Test
     fun `选了高德但没填 Key 时提示会回退离线估算`() {
         val settings = AppSettings.Default.copy(navProvider = NavProviders.AMAP, amapKey = "")
         assertFalse(settings.providerConfigured)
+        assertFalse(settings.hasAnyKey)
         assertTrue(settings.offlineCapabilityText.contains("离线估算"))
     }
 
@@ -115,8 +119,9 @@ class SettingsStoreTest {
     fun `填了 Key 但没标定学校坐标时仍走离线估算`() {
         val settings = AppSettings.Default.copy(navProvider = NavProviders.AMAP, amapKey = "k")
         assertTrue(settings.providerConfigured)
+        assertTrue(settings.hasAnyKey)
         assertFalse(settings.schoolHasGeo)
-        assertTrue(settings.offlineCapabilityText.contains("未标定"))
+        assertTrue(settings.offlineCapabilityText.contains("标定"))
     }
 
     @Test
@@ -129,12 +134,36 @@ class SettingsStoreTest {
         )
         assertTrue(settings.schoolHasGeo)
         assertTrue(settings.offlineCapabilityText.contains("缓存"))
+        // 文案要说明没网会自动降级，用户才不需要手动切模式
+        assertTrue(settings.offlineCapabilityText.contains("没网"))
     }
 
     @Test
-    fun `离线服务商永远视为已配置`() {
-        assertTrue(AppSettings.Default.copy(navProvider = NavProviders.OFFLINE).providerConfigured)
-        assertTrue(AppSettings.Default.copy(navProvider = NavProviders.OFFLINE, amapKey = "").providerConfigured)
+    fun `只填了腾讯的 Key 时也算已配置`() {
+        val settings = AppSettings.Default.copy(
+            navProvider = NavProviders.TENCENT,
+            amapKey = "",
+            tencentKey = "tk"
+        )
+        assertTrue(settings.hasAnyKey)
+        assertTrue(settings.providerConfigured)
+    }
+
+    @Test
+    fun `默认服务商是高德而不是离线`() {
+        assertEquals(NavProviders.AMAP, AppSettings.Default.navProvider)
+    }
+
+    @Test
+    fun `字体缩放档位差距足够明显`() {
+        // 早期版本相邻档位只差 10%，实机上几乎看不出变化，
+        // 用户会以为"调了没生效"。这里锁住最小可感知的差距。
+        val values = FontScale.entries.map { it.value }.sorted()
+        values.zipWithNext().forEach { (a, b) ->
+            assertTrue("相邻档位 $a -> $b 差距过小", b - a >= 0.15f)
+        }
+        assertEquals("100%", FontScale.NORMAL.percentText)
+        assertEquals("120%", FontScale.LARGE.percentText)
     }
 
     @Test

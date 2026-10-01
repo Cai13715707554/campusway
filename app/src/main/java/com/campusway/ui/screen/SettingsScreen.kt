@@ -221,10 +221,13 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(8.dp))
+                    // 只用 selectable：界面上不提供「离线估算」，
+                    // 它是没网时的自动降级行为，不是一种可供选择的模式。
                     SegmentedRow(
-                        options = NavProviders.all.map { NavProviders.displayName(it) },
-                        selectedIndex = NavProviders.all.indexOf(settings.navProvider).coerceAtLeast(0),
-                        onSelect = { onProvider(NavProviders.all[it]) }
+                        options = NavProviders.selectable.map { NavProviders.displayName(it) },
+                        selectedIndex = NavProviders.selectable
+                            .indexOf(settings.navProvider).coerceAtLeast(0),
+                        onSelect = { onProvider(NavProviders.selectable[it]) }
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
@@ -692,7 +695,8 @@ private fun KeyDialog(
         text = {
             Column {
                 Text(
-                    text = "在服务商开放平台申请 Web 服务 Key 后填入。留空则楼外导航使用离线估算。",
+                    text = "在服务商开放平台申请「Web 服务」类型的 Key 后填入。" +
+                        "没有 Key 或没有网络时，楼外导航会自动按离线方式估算，功能不会中断。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -72,12 +72,42 @@ object NavProviders {
     const val AMAP = "amap"
     const val TENCENT = "tencent"
 
+    /**
+     * 界面上可选的服务商。
+     *
+     * 刻意不包含 [OFFLINE]：「离线估算」不是一种"模式选择"，
+     * 而是没网或没 Key 时自动降级的兜底行为。
+     * 把它放进选项里，用户可能误选成"离线模式"，之后楼外导航就永远不联网了。
+     */
+    val selectable = listOf(AMAP, TENCENT)
+
+    /** 内部使用：含兜底的离线实现（例如路线卡片上显示实际用了哪家）。 */
     val all = listOf(OFFLINE, AMAP, TENCENT)
 
     fun displayName(id: String): String = when (id) {
         AMAP -> "高德地图"
         TENCENT -> "腾讯地图"
         else -> "离线估算"
+    }
+
+    /**
+     * 根据用户实际填写的 Key 决定使用哪个服务商。
+     *
+     * 规则：两个都填就用用户选的那个；只填一个就用填了的那个。
+     * 抽成纯函数是因为「保存的服务商必须和填的 Key 对得上」——
+     * 否则会出现"选了高德但高德 Key 是空的"，楼外导航直接哑掉。
+     *
+     * @param preferred 两个都填时用户指定的偏好
+     */
+    fun resolve(amapKey: String, tencentKey: String, preferred: String = AMAP): String {
+        val amapFilled = amapKey.isNotBlank()
+        val tencentFilled = tencentKey.isNotBlank()
+        return when {
+            amapFilled && tencentFilled -> preferred
+            amapFilled -> AMAP
+            tencentFilled -> TENCENT
+            else -> preferred
+        }
     }
 }
 

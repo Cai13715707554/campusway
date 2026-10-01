@@ -21,13 +21,23 @@ enum class ThemeMode {
 
 /**
  * 字体缩放档位（鸿蒙风 UI 里字号整体缩放）。
+ *
+ * 档位差距刻意拉大：最初只差 10%，在实际机型上几乎看不出变化，
+ * 用户会以为"调了没生效"。现在相邻档位至少差 20%，
+ * 并在界面上直接显示百分比，点一下就能确认生效。
  */
 @Serializable
 enum class FontScale(val value: Float, val displayName: String) {
-    SMALL(0.9f, "小"),
+    SMALL(0.85f, "小"),
     NORMAL(1.0f, "标准"),
-    LARGE(1.1f, "大"),
-    EXTRA_LARGE(1.25f, "特大")
+    LARGE(1.2f, "大"),
+    EXTRA_LARGE(1.45f, "特大");
+
+    /** 展示用的百分比，例如“120%”。 */
+    val percentText: String get() = "${Math.round(value * 100)}%"
+
+    /** 选择项上的完整标签，例如“大 · 120%”。 */
+    val optionLabel: String get() = "$displayName · $percentText"
 }
 
 /**
@@ -45,8 +55,9 @@ enum class TimetableAxis {
 /**
  * 应用设置。
  *
- * 所有会影响离线可用性的配置都在这里，满足“主要功能可离线运行”：
- * 地图密钥、学校坐标属于可选增强，不配置也能正常使用课表与平面图导览。
+ * 楼外导航的服务商在高德与腾讯之间二选一（引导页强制至少填一个 Key）。
+ * 「离线估算」不再作为可选项出现在界面上，它只是没网时**自动降级**的兜底行为，
+ * 这样用户不用理解这个概念，也不会误选成"离线模式"导致楼外导航永远不联网。
  */
 @Serializable
 data class AppSettings(
@@ -63,8 +74,8 @@ data class AppSettings(
     /** 提前多少分钟提醒即将上课。 */
     val reminderLeadMinutes: Int = 15,
 
-    /** 楼外导航服务商：offline / amap / tencent。 */
-    val navProvider: String = NavProviders.OFFLINE,
+    /** 楼外导航服务商，取值见 [NavProviders]，只在高德与腾讯之间选择。 */
+    val navProvider: String = NavProviders.AMAP,
     /** 高德 Web 服务 Key。 */
     val amapKey: String = "",
     /** 腾讯地图 Key。 */
@@ -92,21 +103,33 @@ data class AppSettings(
 ) {
     val schoolHasGeo: Boolean get() = Geo.isValid(schoolLatitude, schoolLongitude)
 
+    /** 至少填写了一个可用的 Key（引导页的准入条件）。 */
+    val hasAnyKey: Boolean get() = amapKey.isNotBlank() || tencentKey.isNotBlank()
+
     /** 当前服务商是否已配置可用的 Key。 */
     val providerConfigured: Boolean
         get() = when (navProvider) {
             NavProviders.AMAP -> amapKey.isNotBlank()
             NavProviders.TENCENT -> tencentKey.isNotBlank()
-            else -> true
+            else -> hasAnyKey
         }
 
-    /** 面向用户的离线可用性说明。 */
+    /**
+     * 楼外导航的当前能力说明。
+     *
+     * 措辞刻意强调"没网会自动降级"，让用户明白不需要手动切到离线模式。
+     */
     val offlineCapabilityText: String
         get() = when {
-            navProvider == NavProviders.OFFLINE -> "离线模式：课表、校园平面图与楼内导览全部可用"
-            !providerConfigured -> "未填写 ${NavProviders.displayName(navProvider)} Key，楼外导航将使用离线估算"
-            !schoolHasGeo -> "已填写 Key，但未标定学校坐标，仍使用离线估算"
-            else -> "联网时使用 ${NavProviders.displayName(navProvider)}，并缓存学校周边地图"
+            !providerConfigured ->
+                "未填写地图 Key，楼外导航暂时只能用离线估算（可在设置里补填）"
+
+            !schoolHasGeo ->
+                "已填写 Key，但还没标定学校坐标，楼外导航暂时按离线估算"
+
+            else ->
+                "联网时用 ${NavProviders.displayName(navProvider)} 规划路线并缓存学校周边；" +
+                    "没网时自动降级为离线估算，课表与楼内导览不受影响"
         }
 
     companion object {

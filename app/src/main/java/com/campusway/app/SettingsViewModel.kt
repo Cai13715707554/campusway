@@ -215,7 +215,7 @@ class SettingsViewModel(
         "版本" to BuildInfo.VERSION_NAME,
         "构建类型" to BuildInfo.BUILD_TYPE,
         "目标平台" to "Android ${BuildInfo.MIN_SDK}+",
-        "导航服务商" to "高德地图 / 腾讯地图 / 离线估算",
+        "导航服务商" to "高德地图 / 腾讯地图（没网时自动按离线估算）",
         "离线能力" to "课表、校园平面图、楼内导览"
     )
 

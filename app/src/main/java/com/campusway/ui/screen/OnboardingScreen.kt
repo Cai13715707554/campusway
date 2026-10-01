@@ -20,10 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Wifi
+import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -64,7 +65,7 @@ import kotlinx.coroutines.launch
  * 新用户引导结束时一次性提交的选择。
  *
  * 主题与字体大小不在其中：它们会在用户点选时**立即写入设置**，
- * 这样引导页里改字号、换主题能实时看到效果（否则要等到走完流程才生效）。
+ * 这样引导页里改字号、换主题能实时看到效果。
  */
 data class OnboardingDraft(
     val userName: String = "",
@@ -78,13 +79,11 @@ data class OnboardingDraft(
 /**
  * 页面 4：新用户引导。
  *
- * 需求：
- *  - 先让用户配置基础数据与个性化选择，且都能在设置里重新更改；
- *  - **必须填写至少一个导航 Key**；
- *  - **首次使用必须联网**（用于在线校验 Key）。
- *
- * 因此最后一步是硬门槛：没有联网、或两个 Key 都没通过校验，
- * 就无法进入应用。校验通过后日常使用不再依赖网络。
+ * 规则（按需求确定）：
+ *  - 主题与字号点选即生效，因为它们是"看得见"的设置；
+ *  - **必须填写至少一个导航 Key 才能进入应用**；
+ *  - **不要求联网**：没网也能填 Key 并进入，楼外导航会在联网后自动启用；
+ *  - 界面上不提供「离线估算」选项，它只是没网时的自动降级行为。
  */
 @Composable
 fun OnboardingScreen(
@@ -104,7 +103,6 @@ fun OnboardingScreen(
 
     var step by remember { mutableIntStateOf(0) }
 
-    // 文字类选择先留在本地，走完流程再一次性写入，避免每敲一个字都写一次存储
     var userName by remember { mutableStateOf("") }
     var schoolName by remember { mutableStateOf("") }
     var axis by remember { mutableStateOf(TimetableAxis.PERIOD) }
@@ -118,34 +116,24 @@ fun OnboardingScreen(
     var online by remember { mutableStateOf(Connectivity.isOnline(context)) }
     var preferredProvider by remember { mutableStateOf(NavProviders.AMAP) }
 
-    val amapOk = amapResult?.isSuccess == true
-    val tencentOk = tencentResult?.isSuccess == true
-    val keyReady = amapOk || tencentOk
+    val amapFilled = amapKey.isNotBlank()
+    val tencentFilled = tencentKey.isNotBlank()
+    /** 准入条件：填了至少一个 Key。注意**不含**联网要求。 */
+    val keyFilled = amapFilled || tencentFilled
 
     /**
-     * 最终使用哪个服务商：按校验结果直接算出来，不依赖上面那个异步 effect。
-     * 否则「只校验了腾讯、立刻点开始使用」这种时序下可能保存成没填 Key 的高德。
+     * 最终使用哪个服务商：交给 NavProviders.resolve 决定，
+     * 保证保存的服务商一定和填写的 Key 对得上（只填腾讯却存了高德，楼外导航会直接哑掉）。
      */
-    val providerToUse = when {
-        amapOk && tencentOk -> preferredProvider
-        amapOk -> NavProviders.AMAP
-        tencentOk -> NavProviders.TENCENT
-        else -> preferredProvider
-    }
+    val providerToUse = NavProviders.resolve(
+        amapKey = amapKey,
+        tencentKey = tencentKey,
+        preferred = preferredProvider
+    )
 
-    // 进入导航 Key 那一步时，重新确认一次网络状态
+    // 进入最后一步时刷新一次网络状态（仅用于提示，不影响能否继续）
     LaunchedEffect(step) {
         if (step == TOTAL_STEPS - 1) online = Connectivity.isOnline(context)
-    }
-
-    // 两个 Key 都通过时，默认使用用户选中的那个；只通过一个时自动用它
-    LaunchedEffect(amapOk, tencentOk) {
-        preferredProvider = when {
-            amapOk && tencentOk -> preferredProvider
-            amapOk -> NavProviders.AMAP
-            tencentOk -> NavProviders.TENCENT
-            else -> preferredProvider
-        }
     }
 
     val progress by animateFloatAsState(
@@ -153,8 +141,6 @@ fun OnboardingScreen(
         animationSpec = tween(CampusMotion.Normal),
         label = "onboardingProgress"
     )
-
-    val canGoNext = if (step == TOTAL_STEPS - 1) keyReady else true
 
     Column(
         modifier = modifier
@@ -216,10 +202,10 @@ fun OnboardingScreen(
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = if (step == TOTAL_STEPS - 1) {
-                "第 ${step + 1} / $TOTAL_STEPS 步 · 首次使用需要联网校验导航 Key"
-            } else {
-                "第 ${step + 1} / $TOTAL_STEPS 步 · 这些选择之后都能在设置里改"
+            text = when (step) {
+                TOTAL_STEPS - 1 -> "第 ${step + 1} / $TOTAL_STEPS 步 · 必须填写一个导航 Key"
+                2 -> "第 ${step + 1} / $TOTAL_STEPS 步 · 点选项立刻生效，可以直接看效果"
+                else -> "第 ${step + 1} / $TOTAL_STEPS 步 · 这些选择之后都能在设置里改"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -265,11 +251,10 @@ fun OnboardingScreen(
                     online = online,
                     preferredProvider = preferredProvider,
                     onPreferredProvider = { preferredProvider = it },
-                    onRecheckNetwork = { online = Connectivity.isOnline(context) },
                     onValidate = {
                         checking = true
                         scope.launch {
-                            // 校验填了的那些 Key；两个都填就都校验
+                            // 校验是可选的，只是帮用户确认 Key 是否可用
                             if (amapKey.isNotBlank()) {
                                 amapResult = validator.check(NavProviders.AMAP, amapKey)
                             }
@@ -303,9 +288,17 @@ fun OnboardingScreen(
                 )
             }
             Spacer(Modifier.weight(1f))
+            if (step == TOTAL_STEPS - 1 && !keyFilled) {
+                Text(
+                    text = "请先填一个 Key",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CampusColors.Warning
+                )
+                Spacer(Modifier.width(10.dp))
+            }
             PrimaryButton(
                 text = if (step == TOTAL_STEPS - 1) "开始使用" else "下一步",
-                enabled = canGoNext && !checking,
+                enabled = (step != TOTAL_STEPS - 1 || keyFilled) && !checking,
                 onClick = {
                     if (step == TOTAL_STEPS - 1) {
                         onFinish(
@@ -370,7 +363,7 @@ private fun StepWelcome() {
         FeatureLine(Icons.Outlined.Schedule, "课表", "今日课程、当前时段高亮、整周课表与时间表分开展示")
         FeatureLine(Icons.Outlined.Map, "楼外导航", "校园平面图点选教学楼，接高德或腾讯地图")
         FeatureLine(Icons.Outlined.School, "楼内导览", "楼内示意图高亮目标教室，并给出走法")
-        FeatureLine(Icons.Outlined.CloudOff, "离线可用", "配置完成后，没网也能查课表和示意图")
+        FeatureLine(Icons.Outlined.Wifi, "联网一次即可", "配好 Key 后，没网也能查课表与示意图")
     }
 }
 
@@ -445,6 +438,12 @@ private fun StepProfile(
     }
 }
 
+/**
+ * 外观设置。
+ *
+ * 这里的选择**立即写入设置**，因此下面的预览会实时跟着变；
+ * 预览刻意用大号字，档位差距也放大到 20% 以上，避免"改完看不出区别"。
+ */
 @Composable
 private fun StepAppearance(
     themeMode: ThemeMode,
@@ -460,7 +459,7 @@ private fun StepAppearance(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "鸿蒙风蓝白配色。点下面的选项会立即生效，方便你直接看到效果。",
+            text = "点下面的选项会立即生效，可以直接看下面的效果预览。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -471,18 +470,41 @@ private fun StepAppearance(
             selectedIndex = ThemeMode.entries.indexOf(themeMode),
             onSelect = { onTheme(ThemeMode.entries[it]) }
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
         OptionGroup(
-            label = "字体大小",
+            label = "字体大小（当前 ${fontScale.optionLabel}）",
             options = FontScale.entries.map { it.displayName },
             selectedIndex = FontScale.entries.indexOf(fontScale),
             onSelect = { onFont(FontScale.entries[it]) }
         )
-        Spacer(Modifier.height(10.dp))
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // 效果预览：用大号字，档位差异一眼可见
+    HarmonyCard(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)) {
         Text(
-            text = "示例：校途把课表、导航和楼内导览放在一起。",
-            style = MaterialTheme.typography.bodyMedium,
+            text = "效果预览",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "计算机网络",
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "第 3 节 · 10:00-10:45 · 1 号楼 3 层 302 网络实训室",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "当前字号：${fontScale.displayName}（${fontScale.percentText}）",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary
         )
     }
 }
@@ -522,8 +544,9 @@ private fun StepTimetable(axis: TimetableAxis, onAxis: (TimetableAxis) -> Unit) 
 /**
  * 最后一步：导航 Key。
  *
- * 必须是硬门槛——没有 Key 楼外导航就只能离线估算，
- * 而需求要求首次配置时就把它配好并联网校验通过。
+ * 门槛只是"填了至少一个"，**不要求联网**：
+ * 没网时也能填好 Key 进入应用，联网后楼外导航会自动启用。
+ * 「校验」按钮是可选的辅助，用来确认 Key 是否真的可用。
  */
 @Composable
 private fun StepNavigationKeys(
@@ -537,30 +560,31 @@ private fun StepNavigationKeys(
     online: Boolean,
     preferredProvider: String,
     onPreferredProvider: (String) -> Unit,
-    onRecheckNetwork: () -> Unit,
     onValidate: () -> Unit
 ) {
+    val amapFilled = amapKey.isNotBlank()
+    val tencentFilled = tencentKey.isNotBlank()
     val amapOk = amapResult?.isSuccess == true
     val tencentOk = tencentResult?.isSuccess == true
-    val anyKey = amapKey.isNotBlank() || tencentKey.isNotBlank()
+    val bothFilled = amapFilled && tencentFilled
 
     HarmonyCard {
         Text(
-            text = "导航 Key（必填）",
+            text = "导航 Key（必填一个）",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "楼外导航需要地图服务商支持。请在开放平台申请「Web 服务」类型的 Key，" +
-                "高德或腾讯任填一个即可。首次配置需要联网校验，校验通过后日常使用不再依赖网络。",
+            text = "在开放平台申请「Web 服务」类型的 Key，高德或腾讯任填一个即可进入。" +
+                "没网也能先填好，联网后楼外导航会自动启用；没网时按离线方式估算，不影响课表与楼内导览。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Spacer(Modifier.height(10.dp))
-        NetworkBanner(online = online, onRecheck = onRecheckNetwork)
-        Spacer(Modifier.height(10.dp))
+        NetworkNote(online = online)
+        Spacer(Modifier.height(12.dp))
 
         OutlinedTextField(
             value = amapKey,
@@ -572,7 +596,7 @@ private fun StepNavigationKeys(
             enabled = !checking,
             shape = RoundedCornerShape(CampusDimens.ChipRadius)
         )
-        ResultLine(amapResult)
+        ResultLine(amapResult, filled = amapFilled)
         Spacer(Modifier.height(10.dp))
 
         OutlinedTextField(
@@ -585,13 +609,14 @@ private fun StepNavigationKeys(
             enabled = !checking,
             shape = RoundedCornerShape(CampusDimens.ChipRadius)
         )
-        ResultLine(tencentResult)
+        ResultLine(tencentResult, filled = tencentFilled)
 
         Spacer(Modifier.height(14.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             PrimaryButton(
-                text = if (checking) "校验中…" else "联网校验 Key",
-                enabled = !checking && online && anyKey,
+                text = if (checking) "校验中…" else "联网校验（可选）",
+                // 校验需要网络，但没有网也不影响下一步
+                enabled = !checking && online && (amapFilled || tencentFilled),
                 onClick = onValidate
             )
             if (checking) {
@@ -604,13 +629,13 @@ private fun StepNavigationKeys(
             }
         }
 
-        if (amapOk && tencentOk) {
+        if (bothFilled) {
             Spacer(Modifier.height(14.dp))
             HarmonyDivider()
             Spacer(Modifier.height(12.dp))
             OptionGroup(
-                label = "默认使用哪个",
-                options = listOf(NavProviders.displayName(NavProviders.AMAP), NavProviders.displayName(NavProviders.TENCENT)),
+                label = "两个都填了，默认用哪个",
+                options = NavProviders.selectable.map { NavProviders.displayName(it) },
                 selectedIndex = if (preferredProvider == NavProviders.TENCENT) 1 else 0,
                 onSelect = { onPreferredProvider(if (it == 1) NavProviders.TENCENT else NavProviders.AMAP) }
             )
@@ -619,52 +644,67 @@ private fun StepNavigationKeys(
         Spacer(Modifier.height(12.dp))
         Text(
             text = when {
-                amapOk || tencentOk -> "校验通过，可以开始使用了。"
-                !online -> "当前没有可用网络，连接网络后点「重新检测」。"
-                else -> "填写 Key 后点「联网校验 Key」，校验通过才能继续。"
+                amapOk || tencentOk -> "Key 校验通过，可以开始使用了。"
+                amapFilled || tencentFilled -> "已填写 Key，可以继续。建议在联网时点一次校验确认可用。"
+                else -> "请至少填写一个 Key 才能继续。"
             },
             style = MaterialTheme.typography.bodySmall,
-            color = if (amapOk || tencentOk) CampusColors.Success
-            else MaterialTheme.colorScheme.onSurfaceVariant
+            color = when {
+                amapOk || tencentOk -> CampusColors.Success
+                amapFilled || tencentFilled -> MaterialTheme.colorScheme.onSurfaceVariant
+                else -> CampusColors.Warning
+            }
         )
     }
 }
 
+/** 网络状态提示：仅告知，不拦人。 */
 @Composable
-private fun NetworkBanner(online: Boolean, onRecheck: () -> Unit) {
+private fun NetworkNote(online: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(CampusDimens.ChipRadius))
             .background(
                 if (online) CampusColors.Success.copy(alpha = 0.12f)
-                else CampusColors.Warning.copy(alpha = 0.14f)
+                else MaterialTheme.colorScheme.surfaceVariant
             )
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = if (online) "网络已连接，可以校验 Key" else "首次使用需要联网：当前无可用网络",
-            style = MaterialTheme.typography.bodySmall,
-            color = if (online) CampusColors.Success else CampusColors.Warning,
-            modifier = Modifier.weight(1f)
+        Icon(
+            imageVector = if (online) Icons.Outlined.Wifi else Icons.Outlined.WifiOff,
+            contentDescription = null,
+            tint = if (online) CampusColors.Success else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp)
         )
+        Spacer(Modifier.width(8.dp))
         Text(
-            text = "重新检测",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .clip(RoundedCornerShape(CampusDimens.ChipRadius))
-                .clickable { onRecheck() }
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+            text = if (online) {
+                "网络已连接：可以顺手点一次「联网校验」确认 Key 可用"
+            } else {
+                "当前没有网络：不影响填写和进入，联网后楼外导航会自动启用"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (online) CampusColors.Success else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
 /** 单个 Key 的校验结果行。 */
 @Composable
-private fun ResultLine(result: KeyCheckResult?) {
-    if (result == null) return
+private fun ResultLine(result: KeyCheckResult?, filled: Boolean) {
+    if (result == null) {
+        if (filled) {
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text = "尚未校验（可以不校验直接继续）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
     val (text, color) = when (result) {
         is KeyCheckResult.Valid -> "校验通过" to CampusColors.Success
         is KeyCheckResult.InvalidKey -> result.message to CampusColors.Error

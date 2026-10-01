@@ -93,13 +93,10 @@ fun NavigationScreen(
             onBack = if (building != null) onCloseBuilding else null,
             actions = {
                 if (building == null) {
+                    // 显示"已配置的服务商"，而不是上一次路线实际用了哪家。
+                    // 否则刚进页面时会显示「离线估算」，看起来像是选了个离线模式。
                     HarmonyChip(
-                        text = NavProviders.displayName(
-                            when {
-                                state.guidance?.providerId != null -> state.guidance.providerId
-                                else -> NavProviders.OFFLINE
-                            }
-                        ),
+                        text = NavProviders.displayName(state.configuredProvider),
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         icon = Icons.Outlined.Explore

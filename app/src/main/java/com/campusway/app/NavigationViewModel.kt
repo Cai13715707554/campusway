@@ -47,7 +47,15 @@ data class NavUiState(
     val message: String? = null,
     val cacheInfo: MapCacheInfo? = null,
     /** 是否显示“从当前课表教室出发”的快捷入口。 */
-    val currentLessonRoomId: String? = null
+    val currentLessonRoomId: String? = null,
+    /**
+     * 设置里配置的楼外导航服务商。
+     *
+     * 与 [GuidancePlan.providerId] 的区别：后者是"上一次路线实际用了谁"，
+     * 失败时会降级成离线估算。页面顶部要显示的是用户配置的那个，
+     * 否则刚进页面就会出现「离线估算」，看起来像是选了个离线模式。
+     */
+    val configuredProvider: String = NavProviders.AMAP
 ) {
     val inBuilding: Boolean get() = selectedBuildingId != null
 }
@@ -79,6 +87,12 @@ class NavigationViewModel(
     val courseTable: StateFlow<CourseTable> = repository.courseTable
 
     init {
+        // 持续跟随设置里的服务商，用户在设置页改了就立刻反映到页面顶部
+        viewModelScope.launch {
+            settingsStore.settings.collect { settings ->
+                state.value = state.value.copy(configuredProvider = settings.navProvider)
+            }
+        }
         viewModelScope.launch {
             repository.load()
             state.value = state.value.copy(cacheInfo = cacheStore.readInfo())
