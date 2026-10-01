@@ -298,7 +298,7 @@ private fun courseTableJson(): String {
                 "    {\n      \"courseId\": ${str(e.courseId)},\n      \"dayOfWeek\": ${e.day},\n" +
                     "      \"periodIndex\": ${e.period},\n" +
                     (if (e.roomOverride.isBlank()) "" else "      \"roomIdOverride\": ${str(e.roomOverride)},\n") +
-                    "      \"weeks\": null\n    }"
+                    "      \"weekRange\": null\n    }"
             }
         )
         append("\n  ]\n}")

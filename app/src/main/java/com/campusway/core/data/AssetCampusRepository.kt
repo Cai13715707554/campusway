@@ -18,12 +18,15 @@ import java.io.File
  * 校园数据的 Android 实现。
  *
  * 读取顺序（越靠前优先级越高）：
- *   1. `filesDir/data/*.json` —— 用户在设置页导入或修改后的数据；
- *   2. `assets/data/*.json`  —— 随包内置的示例学校数据（由 tools/GenerateAssets 生成）；
+ *   1. `filesDir` 下 `data` 目录里的 JSON —— 用户在设置页导入或修改后的数据；
+ *   2. 随包 `assets` 的 `data` 目录 —— 内置的示例学校数据（由 tools 里的生成器产出）；
  *   3. 代码里的 [SampleData]   —— 最后兜底，保证任何情况下都有可用数据。
  *
  * 全部走本地文件，无网络依赖。写盘采用“临时文件 + 原子替换”，
  * 避免写入过程中进程被杀导致 JSON 只剩半截、下次启动解析失败。
+ *
+ * 注意：注释里不要出现「斜杠 + 星号 + 后缀」这种文件通配写法，
+ * Kotlin 的块注释可以嵌套，会被当成新的注释开始，导致注释未闭合。
  */
 class AssetCampusRepository(
     context: Context,

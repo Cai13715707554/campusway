@@ -40,7 +40,7 @@ class TodayScheduleTest {
             CourseEntry("c2", dayOfWeek = 1, periodIndex = 2),
             CourseEntry("c3", dayOfWeek = 1, periodIndex = 4),
             // 只在第 5 周之后生效的课，用于验证周次过滤
-            CourseEntry("c1", dayOfWeek = 1, periodIndex = 3, weekRange = 5..20)
+            CourseEntry("c1", dayOfWeek = 1, periodIndex = 3, weekRange = WeekRange(5, 20))
         )
     )
 
@@ -138,7 +138,7 @@ class TodayScheduleTest {
         // 第 1 周：第 3 节的课还没生效
         val table = CourseTable(
             courses = courseTable.courses,
-            entries = listOf(CourseEntry("c1", 1, 3, weekRange = 5..20))
+            entries = listOf(CourseEntry("c1", 1, 3, weekRange = WeekRange(5, 20)))
         )
         assertEquals(0, table.entriesOfDay(1, week = 1).size)
         assertEquals(1, table.entriesOfDay(1, week = 6).size)

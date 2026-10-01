@@ -1,6 +1,5 @@
 package com.campusway.core.model
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -116,6 +115,32 @@ data class Course(
 )
 
 /**
+ * 生效的周次范围（含端点）。
+ *
+ * 刻意不用 Kotlin 的 `IntRange`：它不是 kotlinx.serialization 支持的类型，
+ * 会直接编译失败（Serializer has not been found for type 'IntRange?'）。
+ * 这里用一个普通数据类，既能序列化成 `{"start":5,"end":20}`，也保留了 `in` 语法。
+ */
+@Serializable
+data class WeekRange(
+    val start: Int,
+    val end: Int
+) {
+    operator fun contains(week: Int): Boolean = week in start..end
+
+    /** 便于展示，例如“第 5-20 周”。 */
+    val label: String get() = if (start == end) "第 $start 周" else "第 $start-$end 周"
+
+    companion object {
+        /** 由 IntRange 构造，便于调用方沿用 `5..20` 的写法。 */
+        fun of(range: IntRange): WeekRange = WeekRange(range.first, range.last)
+    }
+}
+
+/** 让 `WeekRange(5, 20)` 与 `5..20` 都能直接用的辅助函数。 */
+fun weekRangeOf(range: IntRange): WeekRange = WeekRange.of(range)
+
+/**
  * 课程表的一条记录：某周、周几、第几节上哪门课。
  */
 @Serializable
@@ -126,7 +151,7 @@ data class CourseEntry(
     /** 节次序号，可跨多节（例如实训课连上 3、4 节）。 */
     val periodIndex: Int,
     /** 生效的周次范围（含端点），null 表示全学期。 */
-    @SerialName("weeks") val weekRange: IntRange? = null,
+    val weekRange: WeekRange? = null,
     /** 覆盖默认上课地点，为空时使用 [Course.roomId]。 */
     val roomIdOverride: String = ""
 ) {

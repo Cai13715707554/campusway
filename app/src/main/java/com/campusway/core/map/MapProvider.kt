@@ -1,6 +1,7 @@
 package com.campusway.core.map
 
 import android.content.Context
+import com.campusway.core.data.JsonConfig
 import com.campusway.core.model.Geo
 import com.campusway.core.model.MapCacheInfo
 import com.campusway.core.model.NavCoord
@@ -182,8 +183,14 @@ abstract class BaseOnlineMapProvider(
         )
     }
 
+    /**
+     * 发起 GET 请求并读取响应文本。
+     *
+     * 注意：HttpURLConnection 是抽象类，不能用构造器创建，
+     * 必须由 `URL.openConnection()` 转型得到，所以这里没有 `HttpURLConnection(...)` 包裹。
+     */
     protected fun httpGet(url: String): String =
-        HttpURLConnection(URL(url).openConnection() as HttpURLConnection).run {
+        (URL(url).openConnection() as HttpURLConnection).run {
             requestMethod = "GET"
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS
@@ -197,8 +204,9 @@ abstract class BaseOnlineMapProvider(
             }
         }
 
+    /** 发起 GET 请求并读取响应字节（静态图瓦片用）。 */
     protected fun httpGetBytes(url: String): ByteArray =
-        HttpURLConnection(URL(url).openConnection() as HttpURLConnection).run {
+        (URL(url).openConnection() as HttpURLConnection).run {
             requestMethod = "GET"
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS
@@ -466,7 +474,8 @@ class MapCacheStore(context: Context) {
 
     /** 统计缓存占用。 */
     fun stats(): Pair<Int, Long> {
-        val tiles = File(tileDir).walkTopDown().filter { it.isFile }.toList()
+        // 注意：File 没有接收 File 的构造重载，所以直接用 tileDir 而不是 File(tileDir)
+        val tiles = tileDir.walkTopDown().filter { it.isFile }.toList()
         return tiles.size to tiles.sumOf { it.length() }
     }
 

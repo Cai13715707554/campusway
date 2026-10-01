@@ -55,7 +55,13 @@ fun CampusWayTheme(
     val base = MaterialTheme.typography
     val factor = fontScale.value
 
-    /** 按缩放系数重算一套字号。只用 6 档，够覆盖页面层级。 */
+    /**
+     * 按缩放系数重算一套字号。
+     *
+     * 说明：辅助函数 [scaled] 的字号参数用 Number 而不是 Float，
+     * 这样 `36` 与 `12.5f` 两种写法都能直接传（Kotlin 不会把 Int 字面量
+     * 隐式转成 Float，写成 Float 会导致一堆类型不匹配的编译错误）。
+     */
     val typography = androidx.compose.material3.Typography(
         displaySmall = base.displaySmall.scaled(factor, 36),
         headlineMedium = base.headlineMedium.scaled(factor, 28),
@@ -84,10 +90,10 @@ fun CampusWayTheme(
 }
 
 /** 生成一个按比例缩放、可选加粗的文本样式。 */
-private fun TextStyle.scaled(factor: Float, sizeSp: Float, weight: FontWeight? = null): TextStyle =
+private fun TextStyle.scaled(factor: Float, sizeSp: Number, weight: FontWeight? = null): TextStyle =
     copy(
         fontFamily = CampusFontFamily,
-        fontSize = (sizeSp * factor).sp,
+        fontSize = (sizeSp.toFloat() * factor).sp,
         fontWeight = weight ?: fontWeight
     )
 
