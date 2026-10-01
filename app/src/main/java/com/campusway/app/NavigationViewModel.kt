@@ -86,6 +86,9 @@ class NavigationViewModel(
     val campus: StateFlow<Campus> = repository.campus
     val courseTable: StateFlow<CourseTable> = repository.courseTable
 
+    /** 当前时间表：导入功课时要沿用它来定节次，页面外也需要读。 */
+    val timeTable: StateFlow<com.campusway.core.model.TimeTable> = repository.timeTable
+
     init {
         // 持续跟随设置里的服务商，用户在设置页改了就立刻反映到页面顶部
         viewModelScope.launch {

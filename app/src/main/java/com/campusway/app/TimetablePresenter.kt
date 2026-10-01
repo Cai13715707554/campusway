@@ -57,7 +57,14 @@ data class TimetableViewData(
     /** 当前是否处于今日视图。 */
     val todayModeActive: Boolean,
     /** 整周视图的周偏移，0 表示本周。 */
-    val weekOffset: Int
+    val weekOffset: Int,
+    /**
+     * 是否"没有时间表"。
+     *
+     * 用户在导入时间表时把项目全都不勾选（彩蛋确认后）就是这个状态：
+     * 课表页不再显示课程与时间表，原本放时间表的位置改显示占位图。
+     */
+    val noVisibleTimetable: Boolean
 ) {
     /** 今日视图标题，例如“10月1日 周三”。 */
     val dateTitle: String = date.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA)) +
@@ -155,7 +162,8 @@ object TimetablePresenter {
             reminderLeadMinutes = settings.reminderLeadMinutes,
             emptyHint = emptyHintFor(todayLessons),
             todayModeActive = state.todayMode,
-            weekOffset = state.weekOffset
+            weekOffset = state.weekOffset,
+            noVisibleTimetable = timeTable.hasNoPeriods
         )
     }
 

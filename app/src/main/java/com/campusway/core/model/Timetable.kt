@@ -41,6 +41,14 @@ data class Period(
     /** 时长（分钟），无效时返回 0。 */
     val durationMinutes: Int
         get() = if (isValid) endMinuteOfDay - startMinuteOfDay else 0
+
+    /**
+     * 在"时间表里哪些项目要显示"的选择中，用这个键标识一项：`午别|项目名`。
+     *
+     * 用键而不是索引，是因为重新导入时间表后索引会变、而午别+项目名基本不变，
+     * 用户上次的选择还能继续生效。同一午别内同名项目会一起显示/隐藏。
+     */
+    val visibilityKey: String get() = "$section|$name"
 }
 
 /**
@@ -86,6 +94,33 @@ data class TimeTable(
         }
         return problems
     }
+
+    // ---------------------------------------------------------------- 显示选择
+
+    /**
+     * 只保留 [keys] 里的项目，并**重新编号**为 1..K。
+     *
+     * 为什么要重新编号：功课表里的课程是按"节次序号"挂上去的，
+     * 序号必须从 1 连续，否则课程会挂到空档上（表现为课表里出现莫名其妙的空行）。
+     * 用户在导入时间表时选择保留哪些项目，得到的就应该是这样一张紧凑的时间表。
+     */
+    fun keepingKeys(keys: Collection<String>): TimeTable {
+        val kept = periods.filter { it.visibilityKey in keys }
+        return copy(periods = kept.mapIndexed { i, p -> p.copy(index = i + 1) })
+    }
+
+    /**
+     * 全部不保留时的结果：一张没有节次的时间表。
+     *
+     * 应用在"调用时间表的地方"把它当作"没有时间表"处理。
+     */
+    fun cleared(): TimeTable = copy(periods = emptyList())
+
+    /** 是否没有任何节次（= 当作没有时间表）。 */
+    val hasNoPeriods: Boolean get() = periods.isEmpty()
+
+    /** 按午别分组，供"选择显示哪些项目"的界面使用。 */
+    fun sectionsWithPeriods(): List<Pair<String, List<Period>>> = groupedBySection()
 
     companion object {
         /** 在没有导入任何时间表时使用的示例作息，便于新用户直接看到效果。 */

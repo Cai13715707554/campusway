@@ -183,6 +183,29 @@ class SettingsViewModel(
         }
     }
 
+    /**
+     * 导入时间表。
+     *
+     * [selectedKeys] 语义见 [AppSettings.visiblePeriodKeys]：
+     * 传进来的是用户勾选保留的项目键；勾选为空表示"没有时间表"（彩蛋确认后的状态）。
+     */
+    fun importPeriodTable(timeTable: com.campusway.core.model.TimeTable, selectedKeys: List<String>) {
+        viewModelScope.launch {
+            repository.saveTimeTable(timeTable)
+            settingsStore.update { it.copy(visiblePeriodKeys = selectedKeys) }
+            repository.load()
+            refreshDetail()
+            detail.value = detail.value.copy(
+                message = if (timeTable.hasNoPeriods) {
+                    "已按「没有时间表」处理：课表页会显示占位图"
+                } else {
+                    "时间表导入成功：${timeTable.periods.size} 个节次，" +
+                        "午别 ${timeTable.sectionsWithPeriods().joinToString("、") { it.first }}"
+                }
+            )
+        }
+    }
+
     // ------------------------------------------------------------ 调试
 
     /**

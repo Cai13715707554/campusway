@@ -51,6 +51,7 @@ import com.campusway.ui.components.HarmonyChip
 import com.campusway.ui.components.HarmonyDivider
 import com.campusway.ui.components.HarmonyProgressBar
 import com.campusway.ui.components.HarmonyTopBar
+import com.campusway.ui.components.RemoteImage
 import com.campusway.ui.components.SectionHeader
 import com.campusway.ui.components.StatusDot
 import com.campusway.ui.theme.CampusColors
@@ -96,6 +97,14 @@ fun TimetableScreen(
             onSelectToday = { onToggleMode(true) },
             onSelectWeek = { onToggleMode(false) }
         )
+
+        // "没有时间表"（用户在导入时间表时把项目全都不勾选并确认）：
+        // 需要用到时间表的地方一律按没有时间表处理，原本放时间表的位置显示占位图。
+        if (data.noVisibleTimetable) {
+            NoTimetablePlaceholder()
+            // 注意用带标签的 return：这里在 Column 的 lambda 里，裸 return 不允许
+            return@Column
+        }
 
         if (data.todayLessons.isNotEmpty() || data.currentLesson != null) {
             TodaySummary(data)
@@ -164,8 +173,7 @@ fun TimetableScreen(
 
 /** 顶部的“今日 / 整周”分段控件。 */
 @Composable
-private fun ModeSwitcher(
-    isToday: Boolean,
+private fun ModeSwitcher(    isToday: Boolean,
     onSelectToday: () -> Unit,
     onSelectWeek: () -> Unit
 ) {
@@ -677,5 +685,72 @@ private fun WeekNavButton(text: String, onClick: () -> Unit) {
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+/**
+ * 占位图地址。
+ *
+ * 用在"没有时间表"的场景：用户导入时间表时把项目全都不勾选并确认后，
+ * 原本显示课程时间表的位置改显示这张图。
+ */
+private const val PLACEHOLDER_IMAGE_URL = "https://img-api.pipw.top/?phone=true"
+
+/**
+ * "没有时间表"时显示的内容。
+ *
+ * 需求：全部不显示时当作彩蛋，确认后凡是要用时间表的地方都按"没有时间表"处理，
+ * 而原本显示时间表的位置改显示上面这个接口的图片。
+ * 图片会缓存在本机，联网看过一次之后离线也能显示。
+ */
+@Composable
+private fun NoTimetablePlaceholder() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = CampusDimens.PagePadding, vertical = 10.dp)
+    ) {
+        HarmonyCard {
+            Text(
+                text = "没有时间表",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "你把时间表里的项目全都不显示了，所以今日课程、整周课表和课程时间表都按" +
+                    "「没有时间表」处理。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "想恢复：到 设置 → 功课表 里重新导入时间表，勾选需要的项目即可。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        HarmonyCard {
+            Text(
+                text = "占位图",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            RemoteImage(
+                url = PLACEHOLDER_IMAGE_URL,
+                contentDescription = "占位图",
+                minHeight = 200
+            ) {
+                Text(
+                    text = "占位图需要联网加载，连上网后会自动显示（看过一次之后离线也能显示）。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }

@@ -69,6 +69,15 @@ data class AppSettings(
     val fontScale: FontScale = FontScale.NORMAL,
     /** 课程表按节次还是按时间显示。 */
     val timetableAxis: TimetableAxis = TimetableAxis.PERIOD,
+    /**
+     * 导入时间表时用户勾选保留的项目键（[Period.visibilityKey]，即 `午别|项目名`）。
+     *
+     * 用途是"再次导入同一份时间表时，恢复上次的选择"。
+     * 真正生效的时间表本身只包含被勾选的项目（见 [TimeTable.keepingKeys]），
+     * 所以这里只是记录选择，不参与日常显示逻辑。
+     * 全部不勾选时是空列表，表示"没有时间表"。
+     */
+    val visiblePeriodKeys: List<String> = emptyList(),
     /** 课间是否显示“即将上课”提醒。 */
     val showUpcomingReminder: Boolean = true,
     /** 提前多少分钟提醒即将上课。 */

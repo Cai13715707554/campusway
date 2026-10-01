@@ -57,6 +57,7 @@ import com.campusway.core.model.Campus
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.NavProviders
 import com.campusway.core.model.ThemeMode
+import com.campusway.core.model.TimeTable
 import com.campusway.core.model.TimetableAxis
 import com.campusway.ui.components.HarmonyCard
 import com.campusway.ui.components.HarmonyChip
@@ -83,6 +84,8 @@ fun SettingsScreen(
     aboutInfo: List<Pair<String, String>>,
     /** 当前校园数据：导入功课表时用于把 `课程名@地点` 关联到真实房间。 */
     campus: Campus,
+    /** 当前时间表：导入功课时沿用它来定节次，避免把已配好的作息冲掉。 */
+    baseTimeTable: TimeTable,
     onThemeMode: (ThemeMode) -> Unit,
     onFontScale: (FontScale) -> Unit,
     onAnimations: (Boolean) -> Unit,
@@ -106,6 +109,8 @@ fun SettingsScreen(
     onClearImportedData: () -> Unit,
     /** 导入一份解析好的功课表。 */
     onImportTimetable: (ImportedTimetable) -> Unit,
+    /** 导入时间表：传入最终生效的时间表与勾选保留的项目键。 */
+    onImportPeriodTable: (TimeTable, List<String>) -> Unit,
     /** 开关内置测试数据。 */
     onSetUseTestData: (Boolean) -> Unit,
     /** 校验调试口令。 */
@@ -121,6 +126,8 @@ fun SettingsScreen(
     var confirmReset by remember { mutableStateOf<String?>(null) }
     /** 导入功课表的弹层。 */
     var showImport by remember { mutableStateOf(false) }
+    /** 导入时间表的弹层。 */
+    var showPeriodImport by remember { mutableStateOf(false) }
     /** 调试入口：先要口令，通过后再显示调试面板。 */
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showDebugPanel by remember { mutableStateOf(false) }
@@ -154,13 +161,22 @@ fun SettingsScreen(
                         onClick = { showImport = true }
                     )
                     InfoRow(
+                        label = "导入时间表",
+                        value = if (state.periodCount == 0) "未设置（当前没有时间表）"
+                        else "xlsx / csv / 粘贴",
+                        valueColor = if (state.periodCount == 0) CampusColors.Warning
+                        else MaterialTheme.colorScheme.primary,
+                        onClick = { showPeriodImport = true }
+                    )
+                    InfoRow(
                         label = "当前课程",
                         value = "${state.courseCount} 门 · ${state.periodCount} 个节次"
                     )
                     HarmonyDivider()
                     Text(
-                        text = "支持 .xlsx（格式示例见工程 docs/功课表.xlsx）、.csv/.txt，" +
-                            "也可以从 Excel 框选复制后粘贴。第一行需要是「星期一…星期日」。",
+                        text = "功课表格式示例见工程 docs/功课表.xlsx（第一行是「星期一…星期日」）；" +
+                            "时间表格式示例见 docs/时间表.xlsx（「午别 / 项目 / 时间」三列）。" +
+                            "也可以从 Excel 框选复制后粘贴。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp)
@@ -613,10 +629,59 @@ fun SettingsScreen(
                     ) {
                         TimetableImportCard(
                             campus = campus,
+                            baseTimeTable = baseTimeTable,
                             showTitle = false,
                             onImported = { imported ->
                                 onImportTimetable(imported)
                                 showImport = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // 导入时间表
+    if (showPeriodImport) {
+        Dialog(onDismissRequest = { showPeriodImport = false }) {
+            Surface(
+                shape = RoundedCornerShape(CampusDimens.SheetRadius),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(CampusDimens.PagePadding)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "导入时间表",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "关闭",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { showPeriodImport = false }
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 460.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        PeriodTableImportCard(
+                            showTitle = false,
+                            onImported = { table, keys ->
+                                onImportPeriodTable(table, keys)
+                                showPeriodImport = false
                             }
                         )
                     }

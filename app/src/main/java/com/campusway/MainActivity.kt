@@ -110,6 +110,13 @@ private fun AppRoot(container: AppContainer) {
                 container.campusRepository.importTimetable(imported.timeTable, imported.courseTable)
             }
         },
+        // 引导页导入时间表：只写时间表，并记住用户勾选了哪些项目
+        onImportPeriodTable = { table, keys ->
+            scope.launch {
+                container.campusRepository.saveTimeTable(table)
+                container.settingsStore.update { it.copy(visiblePeriodKeys = keys) }
+            }
+        },
         onFinishOnboarding = { draft: OnboardingDraft ->
             update { current ->
                 current.copy(

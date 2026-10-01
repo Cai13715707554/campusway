@@ -23,6 +23,7 @@ import com.campusway.core.importer.ImportedTimetable
 import com.campusway.core.model.AppSettings
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.ThemeMode
+import com.campusway.core.model.TimeTable
 import com.campusway.ui.components.BottomTab
 import com.campusway.ui.components.HarmonyBottomBar
 import com.campusway.ui.screen.NavigationScreen
@@ -50,12 +51,16 @@ fun AppShell(
     onOnboardingFontScale: (FontScale) -> Unit,
     /** 引导页导入功课表：写入仓储。 */
     onImportTimetable: (ImportedTimetable) -> Unit,
+    /** 导入时间表：传入最终生效的时间表与勾选保留的项目键。 */
+    onImportPeriodTable: (TimeTable, List<String>) -> Unit,
     onFinishOnboarding: (OnboardingDraft) -> Unit,
     onReplayOnboarding: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 校园数据要在引导分支之前取：引导页导入功课时需要它来匹配教室
+    // 校园数据与当前时间表要在引导分支之前取：
+    // 引导页导入功课时需要用校园数据匹配教室、用当前时间表定节次
     val campus by navigationViewModel.campus.collectAsStateWithLifecycle()
+    val currentTimeTable by navigationViewModel.timeTable.collectAsStateWithLifecycle()
 
     // ---------------- 新用户引导 ----------------
     if (!settings.onboardingCompleted) {
@@ -64,7 +69,9 @@ fun AppShell(
                 initialThemeMode = settings.themeMode,
                 initialFontScale = settings.fontScale,
                 campus = campus,
+                baseTimeTable = currentTimeTable,
                 onImportTimetable = onImportTimetable,
+                onImportPeriodTable = onImportPeriodTable,
                 initialAmapKey = settings.amapKey,
                 initialTencentKey = settings.tencentKey,
                 onThemeModeChange = onOnboardingThemeMode,
@@ -123,6 +130,7 @@ fun AppShell(
                         state = settingsState,
                         aboutInfo = settingsViewModel.aboutInfo,
                         campus = campus,
+                        baseTimeTable = currentTimeTable,
                         onThemeMode = settingsViewModel::setThemeMode,
                         onFontScale = settingsViewModel::setFontScale,
                         onAnimations = settingsViewModel::setAnimationsEnabled,
@@ -144,6 +152,7 @@ fun AppShell(
                         onValidate = settingsViewModel::validateData,
                         onClearImportedData = settingsViewModel::clearImportedData,
                         onImportTimetable = settingsViewModel::importTimetable,
+                        onImportPeriodTable = settingsViewModel::importPeriodTable,
                         onSetUseTestData = settingsViewModel::setUseTestData,
                         onCheckDebugPassword = settingsViewModel::checkDebugPassword,
                         onResetSettings = settingsViewModel::resetAllSettings,

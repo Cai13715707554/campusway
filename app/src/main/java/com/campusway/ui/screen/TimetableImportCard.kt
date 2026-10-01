@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.campusway.core.importer.AndroidSheetImport
 import com.campusway.core.importer.ImportedTimetable
 import com.campusway.core.model.Campus
+import com.campusway.core.model.TimeTable
 import com.campusway.ui.components.HarmonyCard
 import com.campusway.ui.components.HarmonyDivider
 import com.campusway.ui.theme.CampusColors
@@ -62,6 +63,8 @@ fun TimetableImportCard(
     campus: Campus,
     onImported: (ImportedTimetable) -> Unit,
     modifier: Modifier = Modifier,
+    /** 当前已有的时间表：导入功课时沿用它来定节次名称与时间，避免把已配好的作息冲掉。 */
+    baseTimeTable: TimeTable? = null,
     /** 引导页里空间紧张，标题由外层给，这里就不再重复。 */
     showTitle: Boolean = true
 ) {
@@ -83,7 +86,7 @@ fun TimetableImportCard(
         applied = false
         scope.launch {
             val name = AndroidSheetImport.displayName(context, uri)
-            val imported = AndroidSheetImport.readFile(context, uri, campus)
+            val imported = AndroidSheetImport.readFile(context, uri, campus, baseTimeTable)
             fileName = name
             result = imported
             parsing = false
@@ -152,7 +155,7 @@ fun TimetableImportCard(
                 enabled = pastedText.isNotBlank(),
                 onClick = {
                     fileName = null
-                    result = AndroidSheetImport.readPastedText(pastedText, campus)
+                    result = AndroidSheetImport.readPastedText(pastedText, campus, baseTimeTable)
                     applied = false
                 }
             )

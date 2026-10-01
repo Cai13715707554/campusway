@@ -55,6 +55,7 @@ import com.campusway.core.model.Campus
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.NavProviders
 import com.campusway.core.model.ThemeMode
+import com.campusway.core.model.TimeTable
 import com.campusway.core.model.TimetableAxis
 import com.campusway.ui.components.HarmonyCard
 import com.campusway.ui.components.HarmonyDivider
@@ -93,8 +94,12 @@ fun OnboardingScreen(
     initialFontScale: FontScale,
     /** 当前校园数据：导入功课表时用来把 `课程名@地点` 关联到真实房间。 */
     campus: Campus,
+    /** 当前时间表：导入功课时沿用它来定节次。 */
+    baseTimeTable: TimeTable,
     /** 用户导入功课表后回调，由上层写入仓储。 */
     onImportTimetable: (ImportedTimetable) -> Unit,
+    /** 用户导入时间表后回调（时间表 + 勾选保留的项目键）。 */
+    onImportPeriodTable: (TimeTable, List<String>) -> Unit,
     /** 从设置页「重看引导」进来时，把已保存的 Key 预填好，避免重新粘贴。 */
     initialAmapKey: String = "",
     initialTencentKey: String = "",
@@ -243,8 +248,10 @@ fun OnboardingScreen(
                     axis = axis,
                     onAxis = { axis = it },
                     campus = campus,
+                    baseTimeTable = baseTimeTable,
                     onImported = onImportTimetable
                 )
+                4 -> StepImportPeriodTable(onImported = onImportPeriodTable)
                 else -> StepNavigationKeys(
                     amapKey = amapKey,
                     tencentKey = tencentKey,
@@ -331,7 +338,7 @@ fun OnboardingScreen(
     }
 }
 
-private const val TOTAL_STEPS = 5
+private const val TOTAL_STEPS = 6
 
 @Composable
 private fun PrimaryButton(text: String, enabled: Boolean, onClick: () -> Unit) {
@@ -450,6 +457,38 @@ private fun StepProfile(
 }
 
 /**
+ * 导入时间表（作息表）。
+ *
+ * 识别后让用户勾选要显示哪些午别/项目：
+ * 不住校的同学可以整组取消晚上；同类情况都能自己决定。
+ * 一个都不勾选也可以——会弹「喵确认吗？喵」，确认后按"没有时间表"处理，
+ * 课表页原本放时间表的位置改显示占位图。
+ */
+@Composable
+private fun StepImportPeriodTable(
+    onImported: (TimeTable, List<String>) -> Unit
+) {
+    PeriodTableImportCard(onImported = onImported)
+
+    Spacer(Modifier.height(12.dp))
+
+    HarmonyCard {
+        Text(
+            text = "这一步可以跳过",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "不导入的话会先用一套默认作息（每天 9 节）。" +
+                "任何时候都能到 设置 → 功课表 → 导入时间表 重新导入并改选择。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
  * 外观设置。
  *
  * 这里的选择**立即写入设置**，因此下面的预览会实时跟着变；
@@ -531,10 +570,12 @@ private fun StepImportTimetable(
     axis: TimetableAxis,
     onAxis: (TimetableAxis) -> Unit,
     campus: Campus,
+    baseTimeTable: TimeTable,
     onImported: (ImportedTimetable) -> Unit
 ) {
     TimetableImportCard(
         campus = campus,
+        baseTimeTable = baseTimeTable,
         onImported = onImported
     )
 

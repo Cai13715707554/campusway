@@ -184,18 +184,21 @@ object TimetableGridParser {
 
             // 4c) 普通排课行
             autoPeriodIndex++
-            // 有"节次/时间"列就用它的内容当节次名（能解析出时间就一并采用），
-            // 否则按顺序编号。注意：没有节次列时，第一格本身是星期一的课程，不能拿来当节次名。
+            // 节次名与时段优先沿用"当前已有的时间表"（例如用户先导入了作息表）：
+            // 这样导入功课表不会把已经配好的节次名称/午别冲掉，课程也能对上正确的时间。
+            // 有"节次/时间"列时以该列内容为准。
+            val existing = defaultTimes.period(autoPeriodIndex)
             val name = if (labelColumn != null) {
-                label.ifBlank { "第 $autoPeriodIndex 节" }
+                label.ifBlank { existing?.name ?: "第 $autoPeriodIndex 节" }
             } else {
-                "第 $autoPeriodIndex 节"
+                existing?.name ?: "第 $autoPeriodIndex 节"
             }
+            val section = existing?.section?.takeIf { it.isNotBlank() } ?: currentSection
 
             val period = buildPeriod(
                 index = autoPeriodIndex,
                 name = name,
-                section = currentSection,
+                section = section,
                 defaultTimes = defaultTimes
             )
             periods += period
