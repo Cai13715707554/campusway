@@ -200,6 +200,36 @@ class TimetablePresenterTest {
     }
 
     @Test
+    fun `今日与整周的模式标记跟随切换`() {
+        // 回归测试：界面顶部的分段控件高亮此前写死为「今日」，
+        // 导致点了「整周课表」内容切了但按钮还高亮在今日。
+        // 界面读取的就是 todayModeActive，这里保证它正确反映当前模式。
+        val today = TimetablePresenter.build(
+            state(LocalTime.of(9, 0), todayMode = true),
+            table, timeTable, calendar, AppSettings.Default
+        )
+        assertTrue(today.todayModeActive)
+
+        val week = TimetablePresenter.build(
+            state(LocalTime.of(9, 0), todayMode = false),
+            table, timeTable, calendar, AppSettings.Default
+        )
+        assertFalse(week.todayModeActive)
+    }
+
+    @Test
+    fun `整周模式同样提供完整的周数据供表格渲染`() {
+        val week = TimetablePresenter.build(
+            state(LocalTime.of(9, 0), todayMode = false),
+            table, timeTable, calendar, AppSettings.Default
+        )
+        assertFalse(week.todayModeActive)
+        assertEquals(7, week.weekLessons.size)
+        // 时间表在两种模式下都要能拿到，因为它是独立展示的一块
+        assertTrue(week.periodSections.isNotEmpty())
+    }
+
+    @Test
     fun `课程索引包含全部课程`() {
         val data = TimetablePresenter.build(state(LocalTime.of(9, 0)), table, timeTable, calendar, AppSettings.Default)
         assertEquals(2, data.courses.size)

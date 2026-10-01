@@ -7,11 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -21,15 +18,17 @@ import com.campusway.app.CampusWayApplication
 import com.campusway.app.NavigationViewModel
 import com.campusway.app.SettingsViewModel
 import com.campusway.app.TimetableViewModel
+import com.campusway.core.model.AppSettings
 import com.campusway.ui.AppShell
-import com.campusway.ui.OnboardingProfile
+import com.campusway.ui.screen.OnboardingDraft
 import com.campusway.ui.theme.CampusWayTheme
+import kotlinx.coroutines.launch
 
 /**
  * 唯一 Activity。
  *
  * 界面完全由 Compose 承载；主题与字体大小都取自设置流，
- * 因此在设置页改动会立即生效，无需重启。
+ * 因此在设置页、以及新用户引导页里改动都会立即生效，无需重启。
  */
 class MainActivity : ComponentActivity() {
 
@@ -68,6 +67,7 @@ class MainActivity : ComponentActivity() {
 @androidx.compose.runtime.Composable
 private fun AppRoot(container: AppContainer) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val settings by container.settingsStore.settings.collectAsStateWithLifecycle()
 
@@ -91,30 +91,9 @@ private fun AppRoot(container: AppContainer) {
         )
     )
 
-    // 引导结束待写入的profile；用状态承载，写入交给 LaunchedEffect（挂起操作不能在回调里直接做）
-    var pendingProfile by remember { mutableStateOf<OnboardingProfile?>(null) }
-    var replayOnboarding by remember { mutableStateOf(false) }
-
-    LaunchedEffect(pendingProfile) {
-        val profile = pendingProfile ?: return@LaunchedEffect
-        container.settingsStore.update { current ->
-            current.copy(
-                userName = profile.userName,
-                schoolName = profile.schoolName,
-                themeMode = profile.themeMode,
-                fontScale = profile.fontScale,
-                timetableAxis = profile.axis,
-                navProvider = profile.provider,
-                onboardingCompleted = true
-            )
-        }
-        pendingProfile = null
-    }
-
-    LaunchedEffect(replayOnboarding) {
-        if (!replayOnboarding) return@LaunchedEffect
-        container.settingsStore.update { it.copy(onboardingCompleted = false) }
-        replayOnboarding = false
+    /** 统一的设置写入入口：所有回调都在协程里落到 DataStore。 */
+    val update: ((AppSettings) -> AppSettings) -> Unit = { transform ->
+        scope.launch { container.settingsStore.update(transform) }
     }
 
     AppShell(
@@ -122,7 +101,22 @@ private fun AppRoot(container: AppContainer) {
         timetableViewModel = timetableViewModel,
         navigationViewModel = navigationViewModel,
         settingsViewModel = settingsViewModel,
-        onFinishOnboarding = { profile -> pendingProfile = profile },
-        onReplayOnboarding = { replayOnboarding = true }
+        // 主题与字号：引导页点选就立即生效（否则要等走完流程才看得到效果）
+        onOnboardingThemeMode = { mode -> update { it.copy(themeMode = mode) } },
+        onOnboardingFontScale = { scale -> update { it.copy(fontScale = scale) } },
+        onFinishOnboarding = { draft: OnboardingDraft ->
+            update { current ->
+                current.copy(
+                    userName = draft.userName,
+                    schoolName = draft.schoolName,
+                    timetableAxis = draft.axis,
+                    navProvider = draft.provider,
+                    amapKey = draft.amapKey,
+                    tencentKey = draft.tencentKey,
+                    onboardingCompleted = true
+                )
+            }
+        },
+        onReplayOnboarding = { update { it.copy(onboardingCompleted = false) } }
     )
 }

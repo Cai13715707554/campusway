@@ -22,26 +22,14 @@ import com.campusway.app.TimetableViewModel
 import com.campusway.core.model.AppSettings
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.ThemeMode
-import com.campusway.core.model.TimetableAxis
 import com.campusway.ui.components.BottomTab
 import com.campusway.ui.components.HarmonyBottomBar
 import com.campusway.ui.screen.NavigationScreen
+import com.campusway.ui.screen.OnboardingDraft
 import com.campusway.ui.screen.OnboardingScreen
 import com.campusway.ui.screen.SettingsScreen
 import com.campusway.ui.screen.TimetableScreen
 import com.campusway.ui.theme.CampusMotion
-
-/**
- * 新用户引导收集到的个性化选择。
- */
-data class OnboardingProfile(
-    val userName: String = "",
-    val schoolName: String = "",
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val fontScale: FontScale = FontScale.NORMAL,
-    val axis: TimetableAxis = TimetableAxis.PERIOD,
-    val provider: String = com.campusway.core.model.NavProviders.OFFLINE
-)
 
 /**
  * 应用外壳：底部导航（课表 / 导航 / 设置）+ 新用户引导。
@@ -55,7 +43,11 @@ fun AppShell(
     timetableViewModel: TimetableViewModel,
     navigationViewModel: NavigationViewModel,
     settingsViewModel: SettingsViewModel,
-    onFinishOnboarding: (OnboardingProfile) -> Unit,
+    /** 引导页里切换主题：立即写入设置，界面实时生效。 */
+    onOnboardingThemeMode: (ThemeMode) -> Unit,
+    /** 引导页里切换字号：立即写入设置，界面实时生效。 */
+    onOnboardingFontScale: (FontScale) -> Unit,
+    onFinishOnboarding: (OnboardingDraft) -> Unit,
     onReplayOnboarding: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,18 +55,13 @@ fun AppShell(
     if (!settings.onboardingCompleted) {
         Box(modifier = modifier.fillMaxSize().statusBarsPadding()) {
             OnboardingScreen(
-                onFinished = { userName, schoolName, themeMode, fontScale, axis, provider ->
-                    onFinishOnboarding(
-                        OnboardingProfile(
-                            userName = userName,
-                            schoolName = schoolName,
-                            themeMode = themeMode,
-                            fontScale = fontScale,
-                            axis = axis,
-                            provider = provider
-                        )
-                    )
-                }
+                initialThemeMode = settings.themeMode,
+                initialFontScale = settings.fontScale,
+                initialAmapKey = settings.amapKey,
+                initialTencentKey = settings.tencentKey,
+                onThemeModeChange = onOnboardingThemeMode,
+                onFontScaleChange = onOnboardingFontScale,
+                onFinish = onFinishOnboarding
             )
         }
         return

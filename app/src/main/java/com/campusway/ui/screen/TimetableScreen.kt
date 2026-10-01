@@ -88,11 +88,11 @@ fun TimetableScreen(
             subtitle = "第 ${data.weekNumber} / ${data.totalWeeks} 教学周"
         )
 
-        // 今日 / 整周 切换
+        // 今日 / 整周 切换。
+        // 注意：高亮必须跟随真实状态 data.todayModeActive，
+        // 原先写死 isToday = true，导致点了「整周课表」内容切了但按钮还高亮在「今日」。
         ModeSwitcher(
-            todayMode = data.dateTitle,
-            weekMode = data.weekTitle,
-            isToday = true,
+            isToday = data.todayModeActive,
             onSelectToday = { onToggleMode(true) },
             onSelectWeek = { onToggleMode(false) }
         )
@@ -165,8 +165,6 @@ fun TimetableScreen(
 /** 顶部的“今日 / 整周”分段控件。 */
 @Composable
 private fun ModeSwitcher(
-    todayMode: String,
-    weekMode: String,
     isToday: Boolean,
     onSelectToday: () -> Unit,
     onSelectWeek: () -> Unit

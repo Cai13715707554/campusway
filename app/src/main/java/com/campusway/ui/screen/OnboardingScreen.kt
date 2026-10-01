@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,23 +24,31 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.campusway.core.map.Connectivity
+import com.campusway.core.map.KeyCheckResult
+import com.campusway.core.map.MapKeyValidator
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.NavProviders
 import com.campusway.core.model.ThemeMode
@@ -51,43 +58,103 @@ import com.campusway.ui.components.HarmonyDivider
 import com.campusway.ui.theme.CampusColors
 import com.campusway.ui.theme.CampusDimens
 import com.campusway.ui.theme.CampusMotion
+import kotlinx.coroutines.launch
+
+/**
+ * 新用户引导结束时一次性提交的选择。
+ *
+ * 主题与字体大小不在其中：它们会在用户点选时**立即写入设置**，
+ * 这样引导页里改字号、换主题能实时看到效果（否则要等到走完流程才生效）。
+ */
+data class OnboardingDraft(
+    val userName: String = "",
+    val schoolName: String = "",
+    val axis: TimetableAxis = TimetableAxis.PERIOD,
+    val provider: String = NavProviders.AMAP,
+    val amapKey: String = "",
+    val tencentKey: String = ""
+)
 
 /**
  * 页面 4：新用户引导。
  *
- * 需求：“先让用户配置基础数据和个性化选择（这些可在设置里重新更改）”。
- * 因此这里只收集**真正必要**的几项，其余全部给默认值：
- *  1. 称呼与学校名称；
- *  2. 外观（主题、字体大小）；
- *  3. 课表显示方式；
- *  4. 楼外导航方案（离线 / 高德 / 腾讯，Key 可留空后补）。
- * 每一步都可以跳过，跳过后仍能正常用示例数据跑起来。
+ * 需求：
+ *  - 先让用户配置基础数据与个性化选择，且都能在设置里重新更改；
+ *  - **必须填写至少一个导航 Key**；
+ *  - **首次使用必须联网**（用于在线校验 Key）。
+ *
+ * 因此最后一步是硬门槛：没有联网、或两个 Key 都没通过校验，
+ * 就无法进入应用。校验通过后日常使用不再依赖网络。
  */
 @Composable
 fun OnboardingScreen(
-    onFinished: (
-        userName: String,
-        schoolName: String,
-        themeMode: ThemeMode,
-        fontScale: FontScale,
-        axis: TimetableAxis,
-        provider: String
-    ) -> Unit,
+    initialThemeMode: ThemeMode,
+    initialFontScale: FontScale,
+    /** 从设置页「重看引导」进来时，把已保存的 Key 预填好，避免重新粘贴。 */
+    initialAmapKey: String = "",
+    initialTencentKey: String = "",
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onFontScaleChange: (FontScale) -> Unit,
+    onFinish: (OnboardingDraft) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val validator = remember { MapKeyValidator() }
+
     var step by remember { mutableIntStateOf(0) }
+
+    // 文字类选择先留在本地，走完流程再一次性写入，避免每敲一个字都写一次存储
     var userName by remember { mutableStateOf("") }
     var schoolName by remember { mutableStateOf("") }
-    var themeMode by remember { mutableStateOf(ThemeMode.SYSTEM) }
-    var fontScale by remember { mutableStateOf(FontScale.NORMAL) }
     var axis by remember { mutableStateOf(TimetableAxis.PERIOD) }
-    var provider by remember { mutableStateOf(NavProviders.OFFLINE) }
+
+    // 导航 Key
+    var amapKey by remember { mutableStateOf(initialAmapKey) }
+    var tencentKey by remember { mutableStateOf(initialTencentKey) }
+    var amapResult by remember { mutableStateOf<KeyCheckResult?>(null) }
+    var tencentResult by remember { mutableStateOf<KeyCheckResult?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    var online by remember { mutableStateOf(Connectivity.isOnline(context)) }
+    var preferredProvider by remember { mutableStateOf(NavProviders.AMAP) }
+
+    val amapOk = amapResult?.isSuccess == true
+    val tencentOk = tencentResult?.isSuccess == true
+    val keyReady = amapOk || tencentOk
+
+    /**
+     * 最终使用哪个服务商：按校验结果直接算出来，不依赖上面那个异步 effect。
+     * 否则「只校验了腾讯、立刻点开始使用」这种时序下可能保存成没填 Key 的高德。
+     */
+    val providerToUse = when {
+        amapOk && tencentOk -> preferredProvider
+        amapOk -> NavProviders.AMAP
+        tencentOk -> NavProviders.TENCENT
+        else -> preferredProvider
+    }
+
+    // 进入导航 Key 那一步时，重新确认一次网络状态
+    LaunchedEffect(step) {
+        if (step == TOTAL_STEPS - 1) online = Connectivity.isOnline(context)
+    }
+
+    // 两个 Key 都通过时，默认使用用户选中的那个；只通过一个时自动用它
+    LaunchedEffect(amapOk, tencentOk) {
+        preferredProvider = when {
+            amapOk && tencentOk -> preferredProvider
+            amapOk -> NavProviders.AMAP
+            tencentOk -> NavProviders.TENCENT
+            else -> preferredProvider
+        }
+    }
 
     val progress by animateFloatAsState(
         targetValue = (step + 1) / TOTAL_STEPS.toFloat(),
         animationSpec = tween(CampusMotion.Normal),
         label = "onboardingProgress"
     )
+
+    val canGoNext = if (step == TOTAL_STEPS - 1) keyReady else true
 
     Column(
         modifier = modifier
@@ -104,16 +171,14 @@ fun OnboardingScreen(
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(
-                        Brush.linearGradient(
-                            listOf(CampusColors.Blue, CampusColors.BlueLight)
-                        )
+                        Brush.linearGradient(listOf(CampusColors.Blue, CampusColors.BlueLight))
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Outlined.School,
                     contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.White,
+                    tint = Color.White,
                     modifier = Modifier.size(21.dp)
                 )
             }
@@ -134,7 +199,6 @@ fun OnboardingScreen(
 
         Spacer(Modifier.height(18.dp))
 
-        // 进度条
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -152,7 +216,11 @@ fun OnboardingScreen(
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "第 ${step + 1} / $TOTAL_STEPS 步 · 随时可跳过，之后在设置里都能改",
+            text = if (step == TOTAL_STEPS - 1) {
+                "第 ${step + 1} / $TOTAL_STEPS 步 · 首次使用需要联网校验导航 Key"
+            } else {
+                "第 ${step + 1} / $TOTAL_STEPS 步 · 这些选择之后都能在设置里改"
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -173,13 +241,45 @@ fun OnboardingScreen(
                     onSchoolName = { schoolName = it }
                 )
                 2 -> StepAppearance(
-                    themeMode = themeMode,
-                    fontScale = fontScale,
-                    onTheme = { themeMode = it },
-                    onFont = { fontScale = it }
+                    themeMode = initialThemeMode,
+                    fontScale = initialFontScale,
+                    // 直接写入设置：主题与字号会立即作用到整个界面
+                    onTheme = onThemeModeChange,
+                    onFont = onFontScaleChange
                 )
                 3 -> StepTimetable(axis = axis, onAxis = { axis = it })
-                else -> StepNavigation(provider = provider, onProvider = { provider = it })
+                else -> StepNavigationKeys(
+                    amapKey = amapKey,
+                    tencentKey = tencentKey,
+                    onAmapKey = {
+                        amapKey = it
+                        amapResult = null
+                    },
+                    onTencentKey = {
+                        tencentKey = it
+                        tencentResult = null
+                    },
+                    amapResult = amapResult,
+                    tencentResult = tencentResult,
+                    checking = checking,
+                    online = online,
+                    preferredProvider = preferredProvider,
+                    onPreferredProvider = { preferredProvider = it },
+                    onRecheckNetwork = { online = Connectivity.isOnline(context) },
+                    onValidate = {
+                        checking = true
+                        scope.launch {
+                            // 校验填了的那些 Key；两个都填就都校验
+                            if (amapKey.isNotBlank()) {
+                                amapResult = validator.check(NavProviders.AMAP, amapKey)
+                            }
+                            if (tencentKey.isNotBlank()) {
+                                tencentResult = validator.check(NavProviders.TENCENT, tencentKey)
+                            }
+                            checking = false
+                        }
+                    }
+                )
             }
             Spacer(Modifier.height(20.dp))
         }
@@ -203,25 +303,21 @@ fun OnboardingScreen(
                 )
             }
             Spacer(Modifier.weight(1f))
-            Text(
-                text = "跳过",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(CampusDimens.ChipRadius))
-                    .clickable {
-                        onFinished(
-                            userName, schoolName, themeMode, fontScale, axis, provider
-                        )
-                    }
-                    .padding(horizontal = 12.dp, vertical = 11.dp)
-            )
-            Spacer(Modifier.width(8.dp))
             PrimaryButton(
                 text = if (step == TOTAL_STEPS - 1) "开始使用" else "下一步",
+                enabled = canGoNext && !checking,
                 onClick = {
                     if (step == TOTAL_STEPS - 1) {
-                        onFinished(userName, schoolName, themeMode, fontScale, axis, provider)
+                        onFinish(
+                            OnboardingDraft(
+                                userName = userName.trim(),
+                                schoolName = schoolName.trim(),
+                                axis = axis,
+                                provider = providerToUse,
+                                amapKey = amapKey.trim(),
+                                tencentKey = tencentKey.trim()
+                            )
+                        )
                     } else {
                         step++
                     }
@@ -234,18 +330,22 @@ fun OnboardingScreen(
 private const val TOTAL_STEPS = 5
 
 @Composable
-private fun PrimaryButton(text: String, onClick: () -> Unit) {
+private fun PrimaryButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(CampusDimens.ChipRadius))
-            .background(MaterialTheme.colorScheme.primary)
-            .clickable { onClick() }
+            .background(
+                if (enabled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+            .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 22.dp, vertical = 11.dp)
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimary,
+            color = if (enabled) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -268,9 +368,9 @@ private fun StepWelcome() {
         )
         Spacer(Modifier.height(14.dp))
         FeatureLine(Icons.Outlined.Schedule, "课表", "今日课程、当前时段高亮、整周课表与时间表分开展示")
-        FeatureLine(Icons.Outlined.Map, "楼外导航", "校园平面图点选教学楼，可接高德/腾讯，也可离线估算")
+        FeatureLine(Icons.Outlined.Map, "楼外导航", "校园平面图点选教学楼，接高德或腾讯地图")
         FeatureLine(Icons.Outlined.School, "楼内导览", "楼内示意图高亮目标教室，并给出走法")
-        FeatureLine(Icons.Outlined.CloudOff, "离线可用", "课表与所有示意图都存在本机，没网照样用")
+        FeatureLine(Icons.Outlined.CloudOff, "离线可用", "配置完成后，没网也能查课表和示意图")
     }
 }
 
@@ -360,7 +460,7 @@ private fun StepAppearance(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "鸿蒙风蓝白配色，浅色与深色都支持。",
+            text = "鸿蒙风蓝白配色。点下面的选项会立即生效，方便你直接看到效果。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -377,6 +477,12 @@ private fun StepAppearance(
             options = FontScale.entries.map { it.displayName },
             selectedIndex = FontScale.entries.indexOf(fontScale),
             onSelect = { onFont(FontScale.entries[it]) }
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "示例：校途把课表、导航和楼内导览放在一起。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground
         )
     }
 }
@@ -413,27 +519,172 @@ private fun StepTimetable(axis: TimetableAxis, onAxis: (TimetableAxis) -> Unit) 
     }
 }
 
+/**
+ * 最后一步：导航 Key。
+ *
+ * 必须是硬门槛——没有 Key 楼外导航就只能离线估算，
+ * 而需求要求首次配置时就把它配好并联网校验通过。
+ */
 @Composable
-private fun StepNavigation(provider: String, onProvider: (String) -> Unit) {
+private fun StepNavigationKeys(
+    amapKey: String,
+    tencentKey: String,
+    onAmapKey: (String) -> Unit,
+    onTencentKey: (String) -> Unit,
+    amapResult: KeyCheckResult?,
+    tencentResult: KeyCheckResult?,
+    checking: Boolean,
+    online: Boolean,
+    preferredProvider: String,
+    onPreferredProvider: (String) -> Unit,
+    onRecheckNetwork: () -> Unit,
+    onValidate: () -> Unit
+) {
+    val amapOk = amapResult?.isSuccess == true
+    val tencentOk = tencentResult?.isSuccess == true
+    val anyKey = amapKey.isNotBlank() || tencentKey.isNotBlank()
+
     HarmonyCard {
         Text(
-            text = "楼外导航",
+            text = "导航 Key（必填）",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "高德和腾讯都支持，Key 也可以之后在设置里再填。" +
-                "不填或没网时，楼外导航自动使用离线直线估算，功能不会中断。",
+            text = "楼外导航需要地图服务商支持。请在开放平台申请「Web 服务」类型的 Key，" +
+                "高德或腾讯任填一个即可。首次配置需要联网校验，校验通过后日常使用不再依赖网络。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        Spacer(Modifier.height(10.dp))
+        NetworkBanner(online = online, onRecheck = onRecheckNetwork)
+        Spacer(Modifier.height(10.dp))
+
+        OutlinedTextField(
+            value = amapKey,
+            onValueChange = onAmapKey,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("高德地图 Key") },
+            placeholder = { Text("粘贴 Web 服务 Key") },
+            singleLine = true,
+            enabled = !checking,
+            shape = RoundedCornerShape(CampusDimens.ChipRadius)
+        )
+        ResultLine(amapResult)
+        Spacer(Modifier.height(10.dp))
+
+        OutlinedTextField(
+            value = tencentKey,
+            onValueChange = onTencentKey,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("腾讯地图 Key") },
+            placeholder = { Text("粘贴 WebService Key") },
+            singleLine = true,
+            enabled = !checking,
+            shape = RoundedCornerShape(CampusDimens.ChipRadius)
+        )
+        ResultLine(tencentResult)
+
         Spacer(Modifier.height(14.dp))
-        OptionGroup(
-            label = "默认服务商",
-            options = NavProviders.all.map { NavProviders.displayName(it) },
-            selectedIndex = NavProviders.all.indexOf(provider).coerceAtLeast(0),
-            onSelect = { onProvider(NavProviders.all[it]) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PrimaryButton(
+                text = if (checking) "校验中…" else "联网校验 Key",
+                enabled = !checking && online && anyKey,
+                onClick = onValidate
+            )
+            if (checking) {
+                Spacer(Modifier.width(10.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        if (amapOk && tencentOk) {
+            Spacer(Modifier.height(14.dp))
+            HarmonyDivider()
+            Spacer(Modifier.height(12.dp))
+            OptionGroup(
+                label = "默认使用哪个",
+                options = listOf(NavProviders.displayName(NavProviders.AMAP), NavProviders.displayName(NavProviders.TENCENT)),
+                selectedIndex = if (preferredProvider == NavProviders.TENCENT) 1 else 0,
+                onSelect = { onPreferredProvider(if (it == 1) NavProviders.TENCENT else NavProviders.AMAP) }
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = when {
+                amapOk || tencentOk -> "校验通过，可以开始使用了。"
+                !online -> "当前没有可用网络，连接网络后点「重新检测」。"
+                else -> "填写 Key 后点「联网校验 Key」，校验通过才能继续。"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = if (amapOk || tencentOk) CampusColors.Success
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun NetworkBanner(online: Boolean, onRecheck: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(CampusDimens.ChipRadius))
+            .background(
+                if (online) CampusColors.Success.copy(alpha = 0.12f)
+                else CampusColors.Warning.copy(alpha = 0.14f)
+            )
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = if (online) "网络已连接，可以校验 Key" else "首次使用需要联网：当前无可用网络",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (online) CampusColors.Success else CampusColors.Warning,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "重新检测",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .clip(RoundedCornerShape(CampusDimens.ChipRadius))
+                .clickable { onRecheck() }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
+/** 单个 Key 的校验结果行。 */
+@Composable
+private fun ResultLine(result: KeyCheckResult?) {
+    if (result == null) return
+    val (text, color) = when (result) {
+        is KeyCheckResult.Valid -> "校验通过" to CampusColors.Success
+        is KeyCheckResult.InvalidKey -> result.message to CampusColors.Error
+        is KeyCheckResult.NetworkError -> "网络异常：${result.message}" to CampusColors.Warning
+    }
+    Spacer(Modifier.height(5.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (result.isSuccess) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = color
         )
     }
 }
