@@ -16,24 +16,28 @@ import org.junit.Test
 class RoutePlannerTest {
 
     /** 造一层结构：走廊一条线，两端各一个房间。 */
-    private fun simpleFloor(floorId: String = "f1", level: Int = 1): FloorPlan = FloorPlan(
+    private fun simpleFloor(
+        floorId: String = "f1",
+        level: Int = 1,
+        idPrefix: String = ""
+    ): FloorPlan = FloorPlan(
         buildingId = "b1",
         floorId = floorId,
         level = level,
         name = "$level 层",
         rooms = listOf(
-            Room("r-a", "A 教室", "A", floorId, "b1", NormRect(0.05f, 0.10f, 0.25f, 0.30f)),
-            Room("r-b", "B 教室", "B", floorId, "b1", NormRect(0.75f, 0.10f, 0.95f, 0.30f)),
-            Room("gate", "大门", "门", floorId, "b1", NormRect(0.40f, 0.85f, 0.60f, 0.98f), RoomKind.EXIT)
+            Room("${idPrefix}r-a", "A 教室", "A", floorId, "b1", NormRect(0.05f, 0.10f, 0.25f, 0.30f)),
+            Room("${idPrefix}r-b", "B 教室", "B", floorId, "b1", NormRect(0.75f, 0.10f, 0.95f, 0.30f)),
+            Room("${idPrefix}gate", "大门", "门", floorId, "b1", NormRect(0.40f, 0.85f, 0.60f, 0.98f), kind = RoomKind.EXIT)
         ),
         nodes = listOf(
-            FloorPathNode("n1", NormPoint(0.15f, 0.45f)),
-            FloorPathNode("n2", NormPoint(0.50f, 0.45f)),
-            FloorPathNode("n3", NormPoint(0.85f, 0.45f))
+            FloorPathNode("${idPrefix}n1", NormPoint(0.15f, 0.45f)),
+            FloorPathNode("${idPrefix}n2", NormPoint(0.50f, 0.45f)),
+            FloorPathNode("${idPrefix}n3", NormPoint(0.85f, 0.45f))
         ),
         edges = listOf(
-            FloorPathEdge("n1", "n2"),
-            FloorPathEdge("n2", "n3")
+            FloorPathEdge("${idPrefix}n1", "${idPrefix}n2"),
+            FloorPathEdge("${idPrefix}n2", "${idPrefix}n3")
         )
     )
 
@@ -128,9 +132,9 @@ class RoutePlannerTest {
 
     @Test
     fun `跨楼层会给出上楼指引`() {
-        val campus = simpleCampus(listOf(simpleFloor("f1", 1), simpleFloor("f2", 2)))
+        val campus = simpleCampus(listOf(simpleFloor("f1", 1), simpleFloor("f2", 2, idPrefix = "f2-")))
         val building = campus.buildings.first()
-        val route = RoutePlanner.planIndoor(campus, building, toRoomId = "r-b", fromRoomId = null)
+        val route = RoutePlanner.planIndoor(campus, building, toRoomId = "f2-r-b", fromRoomId = null)
         assertNotNull(route)
         val texts = route!!.steps.joinToString(" ") { it.instruction }
         assertTrue(texts.contains("2 层"))

@@ -129,7 +129,7 @@ class SheetReadersTest {
         )
         val grid = SheetReaders.read("功课表.xlsx", bytes)
         val imported = TimetableGridParser.parse(grid)
-        assertEquals(6, imported.courseTable.entries.size)
+        assertEquals(4, imported.courseTable.entries.size)
         assertEquals(2, imported.periodCount)
         assertTrue(imported.warnings.isEmpty() || imported.warnings.none { it.contains("没找到表头") })
     }

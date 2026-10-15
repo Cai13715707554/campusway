@@ -36,8 +36,8 @@ class CampusModelTest {
                         name = "1 层",
                         rooms = listOf(
                             Room("b1-f1-r101", "101 教室", "101", "b1-f1", "b1", NormRect(0.1f, 0.1f, 0.3f, 0.3f)),
-                            Room("b1-f1-r-corridor", "走廊", "", "b1-f1", "b1", NormRect(0.05f, 0.05f, 0.95f, 0.95f), RoomKind.CORRIDOR),
-                            Room("b1-f1-r-stairs", "楼梯", "梯", "b1-f1", "b1", NormRect(0.6f, 0.6f, 0.7f, 0.7f), RoomKind.STAIRS)
+                            Room("b1-f1-r-corridor", "走廊", "", "b1-f1", "b1", NormRect(0.05f, 0.05f, 0.95f, 0.95f), kind = RoomKind.CORRIDOR),
+                            Room("b1-f1-r-stairs", "楼梯", "梯", "b1-f1", "b1", NormRect(0.6f, 0.6f, 0.7f, 0.7f), kind = RoomKind.STAIRS)
                         )
                     ),
                     FloorPlan(
@@ -46,7 +46,7 @@ class CampusModelTest {
                         level = 3,
                         name = "3 层",
                         rooms = listOf(
-                            Room("b1-f3-r302", "302 网络实训室", "302", "b1-f3", "b1", NormRect(0.1f, 0.1f, 0.4f, 0.4f), RoomKind.LAB)
+                            Room("b1-f3-r302", "302 网络实训室", "302", "b1-f3", "b1", NormRect(0.1f, 0.1f, 0.4f, 0.4f), kind = RoomKind.LAB)
                         )
                     )
                 )

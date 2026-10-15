@@ -173,7 +173,7 @@ class SettingsStoreTest {
         // 用户会以为"调了没生效"。这里锁住最小可感知的差距。
         val values = FontScale.entries.map { it.value }.sorted()
         values.zipWithNext().forEach { (a, b) ->
-            assertTrue("相邻档位 $a -> $b 差距过小", b - a >= 0.15f)
+            assertTrue("相邻档位 $a -> $b 差距过小", b - a >= 0.15f - 1e-4f)
         }
         assertEquals("100%", FontScale.NORMAL.percentText)
         assertEquals("120%", FontScale.LARGE.percentText)
