@@ -194,8 +194,10 @@ object SheetReaders {
             }
         }
 
-        // 行尾整行为空的裁掉
-        return grid.dropLastWhile { row -> row.all { it.isBlank() } }.map { it.toList() }
+        // 先裁掉行尾整行为空的行，再把每行末尾的空单元格去掉；
+        // 行中间因跳列产生的空串要保留
+        return grid.dropLastWhile { row -> row.all { it.isBlank() } }
+            .map { row -> row.dropLastWhile { it.isBlank() }.toList() }
     }
 
     private fun cellText(cell: Element, sharedStrings: List<String>): String {
