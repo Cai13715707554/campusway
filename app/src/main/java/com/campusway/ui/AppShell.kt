@@ -88,6 +88,7 @@ fun AppShell(
     val timetableData by timetableViewModel.uiState.collectAsStateWithLifecycle()
     val navState by navigationViewModel.uiState.collectAsStateWithLifecycle()
     val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+    val settingsCourseTable by settingsViewModel.courseTable.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize().statusBarsPadding()) {
         Box(modifier = Modifier.weight(1f)) {
@@ -131,6 +132,9 @@ fun AppShell(
                         aboutInfo = settingsViewModel.aboutInfo,
                         campus = campus,
                         baseTimeTable = currentTimeTable,
+                        courseTable = settingsCourseTable,
+                        onSaveCourseTable = settingsViewModel::saveCourseTable,
+                        onSaveTimeTable = settingsViewModel::saveTimeTable,
                         onThemeMode = settingsViewModel::setThemeMode,
                         onFontScale = settingsViewModel::setFontScale,
                         onAnimations = settingsViewModel::setAnimationsEnabled,

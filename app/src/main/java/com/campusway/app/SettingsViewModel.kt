@@ -8,11 +8,13 @@ import com.campusway.core.data.CampusRepository
 import com.campusway.core.data.SettingsStore
 import com.campusway.core.map.MapCacheStore
 import com.campusway.core.model.AppSettings
+import com.campusway.core.model.CourseTable
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.MapCacheInfo
 import com.campusway.core.model.NavProviders
 import com.campusway.core.model.SchoolCalendar
 import com.campusway.core.model.ThemeMode
+import com.campusway.core.model.TimeTable
 import com.campusway.core.model.TimetableAxis
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -53,6 +55,10 @@ class SettingsViewModel(
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = settingsStore.settings
+
+    /** 当前课程表 / 时间表：课表编辑弹层的数据源。 */
+    val courseTable: StateFlow<CourseTable> = repository.courseTable
+    val timeTable: StateFlow<TimeTable> = repository.timeTable
 
     private val detail = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = detail.asStateFlow()
@@ -204,6 +210,26 @@ class SettingsViewModel(
                         "午别 ${timeTable.rowGroups().joinToString("、") { it.first }}"
                 }
             )
+        }
+    }
+
+    // ------------------------------------------------------------ 编辑
+
+    /** 保存人工编辑后的课程表。 */
+    fun saveCourseTable(value: CourseTable) {
+        viewModelScope.launch {
+            repository.saveCourseTable(value)
+            refreshDetail()
+            detail.value = detail.value.copy(message = "已保存课程表")
+        }
+    }
+
+    /** 保存人工编辑后的时间表（节次 + 时间点）。 */
+    fun saveTimeTable(value: TimeTable) {
+        viewModelScope.launch {
+            repository.saveTimeTable(value)
+            refreshDetail()
+            detail.value = detail.value.copy(message = "已保存时间表")
         }
     }
 

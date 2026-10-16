@@ -54,6 +54,7 @@ import com.campusway.app.SettingsUiState
 import com.campusway.core.importer.ImportedTimetable
 import com.campusway.core.model.AppSettings
 import com.campusway.core.model.Campus
+import com.campusway.core.model.CourseTable
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.NavProviders
 import com.campusway.core.model.ThemeMode
@@ -86,6 +87,12 @@ fun SettingsScreen(
     campus: Campus,
     /** 当前时间表：导入功课时沿用它来定节次，避免把已配好的作息冲掉。 */
     baseTimeTable: TimeTable,
+    /** 当前课程表：编辑课程的弹层用。 */
+    courseTable: CourseTable,
+    /** 保存人工编辑后的课程表。 */
+    onSaveCourseTable: (CourseTable) -> Unit,
+    /** 保存人工编辑后的时间表。 */
+    onSaveTimeTable: (TimeTable) -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
     onFontScale: (FontScale) -> Unit,
     onAnimations: (Boolean) -> Unit,
@@ -128,6 +135,10 @@ fun SettingsScreen(
     var showImport by remember { mutableStateOf(false) }
     /** 导入时间表的弹层。 */
     var showPeriodImport by remember { mutableStateOf(false) }
+    /** 编辑课程表的弹层。 */
+    var showCourseEditor by remember { mutableStateOf(false) }
+    /** 编辑时间表的弹层。 */
+    var showPeriodEditor by remember { mutableStateOf(false) }
     /** 调试入口：先要口令，通过后再显示调试面板。 */
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showDebugPanel by remember { mutableStateOf(false) }
@@ -167,6 +178,18 @@ fun SettingsScreen(
                         valueColor = if (state.periodCount == 0) CampusColors.Warning
                         else MaterialTheme.colorScheme.primary,
                         onClick = { showPeriodImport = true }
+                    )
+                    InfoRow(
+                        label = "编辑课程表",
+                        value = "改课程与排课",
+                        valueColor = MaterialTheme.colorScheme.primary,
+                        onClick = { showCourseEditor = true }
+                    )
+                    InfoRow(
+                        label = "编辑时间表",
+                        value = "改节次与时间，可增删",
+                        valueColor = MaterialTheme.colorScheme.primary,
+                        onClick = { showPeriodEditor = true }
                     )
                     InfoRow(
                         label = "当前课程",
@@ -688,6 +711,34 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    // 编辑课程表
+    if (showCourseEditor) {
+        CourseTableEditorDialog(
+            courseTable = courseTable,
+            timeTable = baseTimeTable,
+            campus = campus,
+            onSave = {
+                onSaveCourseTable(it)
+                showCourseEditor = false
+            },
+            onDismiss = { showCourseEditor = false }
+        )
+    }
+
+    // 编辑时间表（增删节次会同时改到课程表，所以两张表一起保存）
+    if (showPeriodEditor) {
+        TimeTableEditorDialog(
+            timeTable = baseTimeTable,
+            courseTable = courseTable,
+            onSave = { time, course ->
+                onSaveTimeTable(time)
+                onSaveCourseTable(course)
+                showPeriodEditor = false
+            },
+            onDismiss = { showPeriodEditor = false }
+        )
     }
 
     // 调试入口：口令
