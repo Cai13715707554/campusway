@@ -43,8 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.campusway.core.importer.AndroidSheetImport
 import com.campusway.core.importer.ImportedPeriodTable
+import com.campusway.core.model.CourseTable
 import com.campusway.core.model.TimeTable
 import com.campusway.core.model.TimeTableRow
+import com.campusway.core.model.TimetableConsistency
 import com.campusway.ui.components.HarmonyCard
 import com.campusway.ui.components.HarmonyDivider
 import com.campusway.ui.theme.CampusColors
@@ -65,7 +67,11 @@ fun PeriodTableImportCard(
     /** 回调：最终生效的时间表（只含勾选的项目、已重新编号），以及勾选的键。 */
     onImported: (TimeTable, List<String>) -> Unit,
     modifier: Modifier = Modifier,
-    showTitle: Boolean = true
+    showTitle: Boolean = true,
+    /** 当前课程表：用于导入前的缺口校验（新时间表不能少于课程表已用到的节数）。 */
+    courseTable: CourseTable = CourseTable(),
+    /** 当前时间表：缺口校验的基准；为空则不做校验。 */
+    baseTimeTable: TimeTable? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -249,12 +255,39 @@ fun PeriodTableImportCard(
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                // 缺口校验：新时间表每个午别的节次数不能少于课程表已用到的数量
+                val gaps = if (selectedCount > 0 && baseTimeTable != null) {
+                    TimetableConsistency.importProblems(
+                        courseTable = courseTable,
+                        currentTimeTable = baseTimeTable,
+                        newTimeTable = imported.timeTable.keepingKeys(selectedKeys)
+                    )
+                } else {
+                    emptyList()
+                }
+                if (gaps.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    gaps.forEach { problem ->
+                        Text(
+                            text = "· $problem",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CampusColors.Error
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "先按上面的提示调整，或多勾选一些项目，再导入。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CampusColors.Warning
+                    )
+                }
+
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PeriodImportAction(
                         text = if (applied) "已导入" else "导入这些数据",
                         icon = Icons.Filled.Check,
-                        enabled = !applied,
+                        enabled = !applied && gaps.isEmpty(),
                         onClick = {
                             // 全都不勾选 -> 彩蛋确认
                             if (selectedCount == 0) showEasterEgg = true

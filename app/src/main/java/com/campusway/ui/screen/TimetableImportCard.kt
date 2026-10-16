@@ -167,7 +167,22 @@ fun TimetableImportCard(
             Spacer(Modifier.height(12.dp))
             ImportPreview(imported = imported, fileName = fileName)
 
-            if (imported.isEmpty) {
+            if (imported.blocking.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                imported.blocking.forEach { problem ->
+                    Text(
+                        text = "· $problem",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CampusColors.Error
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "补足后再回来导入；这里不会自动帮你补节次。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CampusColors.Warning
+                )
+            } else if (imported.isEmpty) {
                 Spacer(Modifier.height(10.dp))
                 Text(
                     text = "没有解析出课程，请检查表头是否是星期名、以及表格里是否填了课程。",

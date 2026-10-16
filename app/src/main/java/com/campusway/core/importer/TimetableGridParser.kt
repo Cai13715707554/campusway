@@ -7,6 +7,7 @@ import com.campusway.core.model.CourseEntry
 import com.campusway.core.model.CourseTable
 import com.campusway.core.model.Period
 import com.campusway.core.model.TimeTable
+import com.campusway.core.model.TimetableConsistency
 
 /**
  * 表格导入的结果。
@@ -15,9 +16,17 @@ data class ImportedTimetable(
     val timeTable: TimeTable,
     val courseTable: CourseTable,
     /** 面向用户的提示：识别到的问题、被忽略的内容等。 */
-    val warnings: List<String> = emptyList()
+    val warnings: List<String> = emptyList(),
+    /**
+     * 阻止导入的硬性问题：例如某午别的课程节数超过了时间表该午别已有的节次。
+     * 非空时不允许导入，要求用户先去补时间表，而不是自动补节次。
+     */
+    val blocking: List<String> = emptyList()
 ) {
     val isEmpty: Boolean get() = courseTable.entries.isEmpty()
+
+    /** 是否允许导入：解析出了课程且没有硬性缺口。 */
+    val canImport: Boolean get() = courseTable.entries.isNotEmpty() && blocking.isEmpty()
 
     val courseCount: Int get() = courseTable.courses.size
 
@@ -150,6 +159,10 @@ object TimetableGridParser {
         val entries = mutableListOf<CourseEntry>()
         var currentSection = SECTION_KEYWORDS.first()
         var autoPeriodIndex = 0
+        // 统计每个午别的课程行数，用于"课表节数不得超过时间表该午别节数"的导入校验
+        var sectionExplicit = false
+        val explicitCounts = LinkedHashMap<String, Int>()
+        var leadingRows = 0
 
         for (rowIndex in (headerIndex + 1) until rows.size) {
             val row = rows[rowIndex]
@@ -166,6 +179,7 @@ object TimetableGridParser {
             val distinctTexts = nonEmpty.map { it.value }.distinct()
             if (distinctTexts.size == 1 && isSectionKeyword(distinctTexts.first())) {
                 currentSection = distinctTexts.first()
+                sectionExplicit = true
                 continue
             }
 
@@ -188,6 +202,11 @@ object TimetableGridParser {
             }
 
             // 4c) 普通排课行
+            if (sectionExplicit) {
+                explicitCounts[currentSection] = (explicitCounts[currentSection] ?: 0) + 1
+            } else {
+                leadingRows++
+            }
             autoPeriodIndex++
             // 节次名与时段优先沿用"当前已有的时间表"（例如用户先导入了作息表）：
             // 这样导入功课表不会把已经配好的节次名称/午别冲掉，课程也能对上正确的时间。
@@ -257,10 +276,30 @@ object TimetableGridParser {
                 "超出部分的时间是按 45 分钟递推的，请在设置里核对"
         }
 
+        // 导入校验：某午别的课程节数不能超过时间表该午别已有的节次；
+        // 否则不再自动补节次，而是让用户先去把时间表补足。
+        val blocking = mutableListOf<String>()
+        val baseBySection = TimetableConsistency.periodsBySection(defaultTimes)
+        explicitCounts.forEach { (section, count) ->
+            val have = baseBySection[section]
+            if (have != null && count > have) {
+                blocking += "「$section」课表有 $count 节，时间表只有 $have 节；" +
+                    "请先到 设置 → 编辑时间表 给该午别补足，或删掉多余的课"
+            }
+        }
+        if (blocking.isEmpty()) {
+            val totalRows = leadingRows + explicitCounts.values.sum()
+            if (totalRows > defaultTimes.periods.size) {
+                blocking += "课表共 $totalRows 节，时间表只有 ${defaultTimes.periods.size} 节；" +
+                    "请先到 设置 → 编辑时间表 补足，或删掉多余的课"
+            }
+        }
+
         return ImportedTimetable(
             timeTable = finalTimeTable,
             courseTable = CourseTable(courses = courses.values.toList(), entries = entries),
-            warnings = warnings
+            warnings = warnings,
+            blocking = blocking
         )
     }
 

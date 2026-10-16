@@ -702,6 +702,8 @@ fun SettingsScreen(
                     ) {
                         PeriodTableImportCard(
                             showTitle = false,
+                            courseTable = courseTable,
+                            baseTimeTable = baseTimeTable,
                             onImported = { table, keys ->
                                 onImportPeriodTable(table, keys)
                                 showPeriodImport = false

@@ -52,6 +52,7 @@ import com.campusway.core.map.Connectivity
 import com.campusway.core.map.KeyCheckResult
 import com.campusway.core.map.MapKeyValidator
 import com.campusway.core.model.Campus
+import com.campusway.core.model.CourseTable
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.NavProviders
 import com.campusway.core.model.ThemeMode
@@ -96,6 +97,8 @@ fun OnboardingScreen(
     campus: Campus,
     /** 当前时间表：导入功课时沿用它来定节次。 */
     baseTimeTable: TimeTable,
+    /** 当前课程表：导入时间表时用于节数缺口校验。 */
+    courseTable: CourseTable,
     /** 用户导入功课表后回调，由上层写入仓储。 */
     onImportTimetable: (ImportedTimetable) -> Unit,
     /** 用户导入时间表后回调（时间表 + 勾选保留的项目键）。 */
@@ -251,7 +254,11 @@ fun OnboardingScreen(
                     baseTimeTable = baseTimeTable,
                     onImported = onImportTimetable
                 )
-                4 -> StepImportPeriodTable(onImported = onImportPeriodTable)
+                4 -> StepImportPeriodTable(
+                    onImported = onImportPeriodTable,
+                    courseTable = courseTable,
+                    baseTimeTable = baseTimeTable
+                )
                 else -> StepNavigationKeys(
                     amapKey = amapKey,
                     tencentKey = tencentKey,
@@ -466,9 +473,15 @@ private fun StepProfile(
  */
 @Composable
 private fun StepImportPeriodTable(
-    onImported: (TimeTable, List<String>) -> Unit
+    onImported: (TimeTable, List<String>) -> Unit,
+    courseTable: CourseTable,
+    baseTimeTable: TimeTable
 ) {
-    PeriodTableImportCard(onImported = onImported)
+    PeriodTableImportCard(
+        onImported = onImported,
+        courseTable = courseTable,
+        baseTimeTable = baseTimeTable
+    )
 
     Spacer(Modifier.height(12.dp))
 

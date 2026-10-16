@@ -61,6 +61,7 @@ fun AppShell(
     // 引导页导入功课时需要用校园数据匹配教室、用当前时间表定节次
     val campus by navigationViewModel.campus.collectAsStateWithLifecycle()
     val currentTimeTable by navigationViewModel.timeTable.collectAsStateWithLifecycle()
+    val settingsCourseTable by settingsViewModel.courseTable.collectAsStateWithLifecycle()
 
     // ---------------- 新用户引导 ----------------
     if (!settings.onboardingCompleted) {
@@ -70,6 +71,7 @@ fun AppShell(
                 initialFontScale = settings.fontScale,
                 campus = campus,
                 baseTimeTable = currentTimeTable,
+                courseTable = settingsCourseTable,
                 onImportTimetable = onImportTimetable,
                 onImportPeriodTable = onImportPeriodTable,
                 initialAmapKey = settings.amapKey,
@@ -88,7 +90,6 @@ fun AppShell(
     val timetableData by timetableViewModel.uiState.collectAsStateWithLifecycle()
     val navState by navigationViewModel.uiState.collectAsStateWithLifecycle()
     val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
-    val settingsCourseTable by settingsViewModel.courseTable.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize().statusBarsPadding()) {
         Box(modifier = Modifier.weight(1f)) {
