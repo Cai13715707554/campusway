@@ -328,7 +328,7 @@ class SettingsViewModel(
         "版本" to BuildInfo.VERSION_NAME,
         // 直接列出本版新增：在关于页看到这行，就说明装的是最新构建，
         // 不用再怀疑"改了怎么没生效"。
-        "本版新增" to "编辑课程表 · 编辑时间表（改节次与时间，可增删）",
+        "本版新增" to "时间表三列编辑 · 导入节数缺口校验",
         "构建类型" to BuildInfo.BUILD_TYPE,
         "目标平台" to "Android ${BuildInfo.MIN_SDK}+",
         "导航服务商" to "高德地图 / 腾讯地图（没网时自动按离线估算）",
