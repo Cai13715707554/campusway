@@ -21,6 +21,7 @@ import com.campusway.app.SettingsViewModel
 import com.campusway.app.TimetableViewModel
 import com.campusway.core.importer.ImportedTimetable
 import com.campusway.core.model.AppSettings
+import com.campusway.core.model.CourseTable
 import com.campusway.core.model.FontScale
 import com.campusway.core.model.ThemeMode
 import com.campusway.core.model.TimeTable
@@ -53,6 +54,10 @@ fun AppShell(
     onImportTimetable: (ImportedTimetable) -> Unit,
     /** 导入时间表：传入最终生效的时间表与勾选保留的项目键。 */
     onImportPeriodTable: (TimeTable, List<String>) -> Unit,
+    /** 引导页里用编辑器保存课程表。 */
+    onSaveCourseTable: (CourseTable) -> Unit,
+    /** 引导页里用编辑器保存时间表（含同一操作可能改动的课程表）。 */
+    onSaveTimeTable: (TimeTable, CourseTable) -> Unit,
     onFinishOnboarding: (OnboardingDraft) -> Unit,
     onReplayOnboarding: () -> Unit,
     modifier: Modifier = Modifier
@@ -74,6 +79,8 @@ fun AppShell(
                 courseTable = settingsCourseTable,
                 onImportTimetable = onImportTimetable,
                 onImportPeriodTable = onImportPeriodTable,
+                onSaveCourseTable = onSaveCourseTable,
+                onSaveTimeTable = onSaveTimeTable,
                 initialAmapKey = settings.amapKey,
                 initialTencentKey = settings.tencentKey,
                 onThemeModeChange = onOnboardingThemeMode,

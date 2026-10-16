@@ -59,6 +59,7 @@ import com.campusway.core.model.ThemeMode
 import com.campusway.core.model.TimeTable
 import com.campusway.core.model.TimetableAxis
 import com.campusway.ui.components.HarmonyCard
+import com.campusway.ui.components.HarmonyChip
 import com.campusway.ui.components.HarmonyDivider
 import com.campusway.ui.theme.CampusColors
 import com.campusway.ui.theme.CampusDimens
@@ -103,6 +104,10 @@ fun OnboardingScreen(
     onImportTimetable: (ImportedTimetable) -> Unit,
     /** 用户导入时间表后回调（时间表 + 勾选保留的项目键）。 */
     onImportPeriodTable: (TimeTable, List<String>) -> Unit,
+    /** 引导页里用编辑器保存课程表。 */
+    onSaveCourseTable: (CourseTable) -> Unit,
+    /** 引导页里用编辑器保存时间表（含同一操作可能改动的课程表）。 */
+    onSaveTimeTable: (TimeTable, CourseTable) -> Unit,
     /** 从设置页「重看引导」进来时，把已保存的 Key 预填好，避免重新粘贴。 */
     initialAmapKey: String = "",
     initialTencentKey: String = "",
@@ -252,12 +257,15 @@ fun OnboardingScreen(
                     onAxis = { axis = it },
                     campus = campus,
                     baseTimeTable = baseTimeTable,
-                    onImported = onImportTimetable
+                    courseTable = courseTable,
+                    onImported = onImportTimetable,
+                    onSaveCourseTable = onSaveCourseTable
                 )
                 4 -> StepImportPeriodTable(
                     onImported = onImportPeriodTable,
                     courseTable = courseTable,
-                    baseTimeTable = baseTimeTable
+                    baseTimeTable = baseTimeTable,
+                    onSaveTimeTable = onSaveTimeTable
                 )
                 else -> StepNavigationKeys(
                     amapKey = amapKey,
@@ -475,13 +483,51 @@ private fun StepProfile(
 private fun StepImportPeriodTable(
     onImported: (TimeTable, List<String>) -> Unit,
     courseTable: CourseTable,
-    baseTimeTable: TimeTable
+    baseTimeTable: TimeTable,
+    onSaveTimeTable: (TimeTable, CourseTable) -> Unit
 ) {
+    var showEditor by remember { mutableStateOf(false) }
+
     PeriodTableImportCard(
         onImported = onImported,
         courseTable = courseTable,
         baseTimeTable = baseTimeTable
     )
+
+    Spacer(Modifier.height(12.dp))
+
+    HarmonyCard {
+        Text(
+            text = "导入后还能改",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "节次的名称、起止时间、午别，以及增删节次/时间点，都能在编辑里改。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        HarmonyChip(
+            text = "编辑时间表",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.primary,
+            onClick = { showEditor = true }
+        )
+    }
+
+    if (showEditor) {
+        TimeTableEditorDialog(
+            timeTable = baseTimeTable,
+            courseTable = courseTable,
+            onSave = { time, course ->
+                onSaveTimeTable(time, course)
+                showEditor = false
+            },
+            onDismiss = { showEditor = false }
+        )
+    }
 
     Spacer(Modifier.height(12.dp))
 
@@ -584,13 +630,53 @@ private fun StepImportTimetable(
     onAxis: (TimetableAxis) -> Unit,
     campus: Campus,
     baseTimeTable: TimeTable,
-    onImported: (ImportedTimetable) -> Unit
+    courseTable: CourseTable,
+    onImported: (ImportedTimetable) -> Unit,
+    onSaveCourseTable: (CourseTable) -> Unit
 ) {
+    var showEditor by remember { mutableStateOf(false) }
+
     TimetableImportCard(
         campus = campus,
         baseTimeTable = baseTimeTable,
         onImported = onImported
     )
+
+    Spacer(Modifier.height(12.dp))
+
+    HarmonyCard {
+        Text(
+            text = "导入后还能改",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "课程、排课、节次与时间都能再改，不用重新导入。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        HarmonyChip(
+            text = "编辑课程表",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.primary,
+            onClick = { showEditor = true }
+        )
+    }
+
+    if (showEditor) {
+        CourseTableEditorDialog(
+            courseTable = courseTable,
+            timeTable = baseTimeTable,
+            campus = campus,
+            onSave = {
+                onSaveCourseTable(it)
+                showEditor = false
+            },
+            onDismiss = { showEditor = false }
+        )
+    }
 
     Spacer(Modifier.height(12.dp))
 

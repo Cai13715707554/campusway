@@ -117,6 +117,16 @@ private fun AppRoot(container: AppContainer) {
                 container.settingsStore.update { it.copy(visiblePeriodKeys = keys) }
             }
         },
+        // 引导页里用编辑器保存（可能同时改到两张表）
+        onSaveCourseTable = { table ->
+            scope.launch { container.campusRepository.saveCourseTable(table) }
+        },
+        onSaveTimeTable = { table, course ->
+            scope.launch {
+                container.campusRepository.saveTimeTable(table)
+                container.campusRepository.saveCourseTable(course)
+            }
+        },
         onFinishOnboarding = { draft: OnboardingDraft ->
             update { current ->
                 current.copy(
