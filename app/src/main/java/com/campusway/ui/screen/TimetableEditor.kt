@@ -27,11 +27,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,8 +57,7 @@ import com.campusway.core.model.Campus
 import com.campusway.core.model.Course
 import com.campusway.core.model.CourseEditing
 import com.campusway.core.model.CourseTable
-import com.campusway.core.model.Period
-import com.campusway.core.model.TimePoint
+import com.campusway.core.model.TimeItem
 import com.campusway.core.model.TimeTable
 import com.campusway.core.model.TimetableEditing
 import com.campusway.ui.components.EmptyState
@@ -119,6 +120,337 @@ private fun EditorScaffold(
             }
         }
     }
+}
+
+/**
+ * 时间表编辑器：改节次的名称/时间，右侧开关在「节次 / 时间点」之间切换。
+ *
+ * 布局与首页「课程时间表」一致：按午别分组、组内按时间排序。
+ * 增删/切类型都会同步调整课程表引用的节次序号，因此 [onSave] 同时回传两张表。
+ */
+@Composable
+fun TimeTableEditorDialog(
+    timeTable: TimeTable,
+    courseTable: CourseTable,
+    onSave: (TimeTable, CourseTable) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var items by remember { mutableStateOf(TimetableEditing.itemsOf(timeTable)) }
+    var newKeySeq by remember { mutableIntStateOf(0) }
+    var toggleConfirm by remember { mutableStateOf<TimeItem?>(null) }
+    var menuItem by remember { mutableStateOf<TimeItem?>(null) }
+    var deleteConfirm by remember { mutableStateOf<TimeItem?>(null) }
+    var sectionPicker by remember { mutableStateOf<TimeItem?>(null) }
+
+    fun update(key: String, transform: (TimeItem) -> TimeItem) {
+        items = items.map { if (it.key == key) transform(it) else it }
+    }
+
+    fun courseCountOf(item: TimeItem): Int =
+        item.originalIndex?.let { idx -> courseTable.entries.count { it.periodIndex == idx } } ?: 0
+
+    // 编辑结果预览：用于展示校验问题，也直接就是保存内容
+    val preview = TimetableEditing.applyItems(timeTable, courseTable, items)
+    val problems = preview.timeTable.validate()
+
+    EditorScaffold(
+        title = "编辑时间表",
+        subtitle = "改名称与时间，右侧切换节次/时间点",
+        onDismiss = onDismiss,
+        onSave = { onSave(preview.timeTable, preview.courseTable) }
+    ) {
+        item {
+            HarmonyCard {
+                Text(
+                    text = "每行三列：名称、时间、类型。时间可写「08:00 - 08:45」，也可以只写「06:40」；" +
+                        "右侧开关在「节次」和「时间点」之间切换（节次会进课程表，时间点只在时间表显示）。" +
+                        "点行尾的「⋮」可删除或改午别。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        if (problems.isNotEmpty()) {
+            item {
+                HarmonyCard(color = CampusColors.Warning.copy(alpha = 0.12f)) {
+                    problems.forEach { problem ->
+                        Text(
+                            text = "· $problem",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CampusColors.Warning
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "可以先保存，之后再回来修改。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        val groups = LinkedHashMap<String, MutableList<TimeItem>>()
+        items.forEach { item -> groups.getOrPut(item.section) { mutableListOf() } += item }
+
+        if (groups.isEmpty()) {
+            item {
+                HarmonyCard {
+                    EmptyState(text = "还没有节次或时间点", hint = "点下面的「添加一项」开始")
+                    Spacer(Modifier.height(12.dp))
+                    HarmonyChip(
+                        text = "添加一项",
+                        icon = Icons.Filled.Add,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        onClick = {
+                            items = items + TimeItem(key = "n-${newKeySeq++}", originalIndex = null, isPeriod = false, section = "上午")
+                        }
+                    )
+                }
+            }
+        }
+
+        groups.forEach { (section, groupItems) ->
+            item(key = "section-$section") {
+                SectionHeader(title = section, subtitle = "${groupItems.size} 项")
+            }
+            item(key = "rows-$section") {
+                HarmonyCard {
+                    groupItems.forEachIndexed { index, item ->
+                        if (index > 0) HarmonyDivider()
+                        TimeItemRow(
+                            item = item,
+                            onNameChange = { value -> update(item.key) { it.copy(name = value) } },
+                            onTimeChange = { value -> update(item.key) { it.copy(timeText = value) } },
+                            onToggleType = { wantPeriod ->
+                                if (!wantPeriod && item.isPeriod && courseCountOf(item) > 0) {
+                                    toggleConfirm = item
+                                } else {
+                                    update(item.key) { it.copy(isPeriod = wantPeriod) }
+                                }
+                            },
+                            onMenu = { menuItem = item }
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    HarmonyChip(
+                        text = "添加一项",
+                        icon = Icons.Filled.Add,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        onClick = {
+                            items = items + TimeItem(
+                                key = "n-${newKeySeq++}",
+                                originalIndex = null,
+                                isPeriod = false,
+                                section = section
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // 节次 -> 时间点 前确认（该节上有课）
+    toggleConfirm?.let { item ->
+        val affected = courseCountOf(item)
+        AlertDialog(
+            onDismissRequest = { toggleConfirm = null },
+            title = { Text("改成时间点？") },
+            text = { Text("「${item.name.ifBlank { "这一节" }}」上有 $affected 节课，改成时间点后会一并清除。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    update(item.key) { it.copy(isPeriod = false) }
+                    toggleConfirm = null
+                }) { Text("改成时间点") }
+            },
+            dismissButton = { TextButton(onClick = { toggleConfirm = null }) { Text("取消") } }
+        )
+    }
+
+    // 行菜单：改午别 / 删除
+    menuItem?.let { item ->
+        AlertDialog(
+            onDismissRequest = { menuItem = null },
+            title = { Text(item.name.ifBlank { if (item.isPeriod) "节次" else "时间点" }) },
+            text = {
+                Column {
+                    MenuOption("改午别") {
+                        sectionPicker = item
+                        menuItem = null
+                    }
+                    MenuOption("删除") {
+                        deleteConfirm = item
+                        menuItem = null
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { menuItem = null }) { Text("取消") }
+            }
+        )
+    }
+
+    deleteConfirm?.let { item ->
+        val affected = courseCountOf(item)
+        AlertDialog(
+            onDismissRequest = { deleteConfirm = null },
+            title = { Text("删除这一项？") },
+            text = {
+                Text(
+                    if (affected > 0) {
+                        "「${item.name.ifBlank { "这一节" }}」上有 $affected 节课，删除后会一并移除。"
+                    } else {
+                        "删除后，其余节次序号会自动前移。"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    items = items.filterNot { it.key == item.key }
+                    deleteConfirm = null
+                }) { Text("删除") }
+            },
+            dismissButton = { TextButton(onClick = { deleteConfirm = null }) { Text("取消") } }
+        )
+    }
+
+    sectionPicker?.let { item ->
+        var newSection by remember { mutableStateOf("") }
+        val sections = items.map { it.section }.distinct()
+        AlertDialog(
+            onDismissRequest = { sectionPicker = null },
+            title = { Text("改午别") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    sections.forEach { section ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    update(item.key) { it.copy(section = section) }
+                                    sectionPicker = null
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = section,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (section == item.section) {
+                                Text(
+                                    text = "当前",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        HarmonyDivider()
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newSection,
+                        onValueChange = { newSection = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("新午别") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(CampusDimens.ChipRadius)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = newSection.isNotBlank(),
+                    onClick = {
+                        update(item.key) { it.copy(section = newSection.trim()) }
+                        sectionPicker = null
+                    }
+                ) { Text("用新午别") }
+            },
+            dismissButton = { TextButton(onClick = { sectionPicker = null }) { Text("取消") } }
+        )
+    }
+}
+
+/** 时间表编辑里的一行：名称 / 时间 / 节次-时间点开关 / 更多。 */
+@Composable
+private fun TimeItemRow(
+    item: TimeItem,
+    onNameChange: (String) -> Unit,
+    onTimeChange: (String) -> Unit,
+    onToggleType: (Boolean) -> Unit,
+    onMenu: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedTextField(
+            value = item.name,
+            onValueChange = onNameChange,
+            modifier = Modifier.weight(1.2f),
+            placeholder = { Text("名称") },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodySmall,
+            shape = RoundedCornerShape(CampusDimens.ChipRadius)
+        )
+        Spacer(Modifier.width(6.dp))
+        OutlinedTextField(
+            value = item.timeText,
+            onValueChange = onTimeChange,
+            modifier = Modifier.weight(1.15f),
+            placeholder = { Text("08:00 - 08:45") },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodySmall,
+            shape = RoundedCornerShape(CampusDimens.ChipRadius)
+        )
+        Spacer(Modifier.width(4.dp))
+        Column(
+            modifier = Modifier.width(56.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = if (item.isPeriod) "节次" else "时间点",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (item.isPeriod) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+            Switch(checked = item.isPeriod, onCheckedChange = onToggleType)
+        }
+        Icon(
+            imageVector = Icons.Outlined.MoreVert,
+            contentDescription = "更多",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(20.dp)
+                .clickable { onMenu() }
+        )
+    }
+}
+
+/** 行菜单里的一个选项。 */
+@Composable
+private fun MenuOption(text: String, onClick: () -> Unit) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 12.dp)
+    )
 }
 
 /**
@@ -560,279 +892,4 @@ private fun CoursePickDialog(
             }
         }
     )
-}
-
-/**
- * 时间表编辑器：改节次的名称/起止时间/午别，可增删节次；时间点同样可增删改。
- *
- * 增删节次会同步调整课程表里引用的节次序号，因此 [onSave] 同时回传两张表。
- */
-@Composable
-fun TimeTableEditorDialog(
-    timeTable: TimeTable,
-    courseTable: CourseTable,
-    onSave: (TimeTable, CourseTable) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var draftTime by remember { mutableStateOf(timeTable) }
-    var draftCourse by remember { mutableStateOf(courseTable) }
-    var confirmDeletePeriod by remember { mutableStateOf<Int?>(null) }
-
-    val problems = draftTime.validate()
-
-    fun addPeriodAfter(index: Int?, section: String) {
-        val (result, _) = TimetableEditing.addPeriodAfter(
-            table = draftTime,
-            courseTable = draftCourse,
-            afterIndex = index,
-            section = section
-        )
-        draftTime = result.timeTable
-        draftCourse = result.courseTable
-    }
-
-    EditorScaffold(
-        title = "编辑时间表",
-        subtitle = "改节次名称与时间，可增删",
-        onDismiss = onDismiss,
-        onSave = { onSave(draftTime, draftCourse) }
-    ) {
-        item {
-            HarmonyCard {
-                Text(
-                    text = "「第 N 节」这类名称会作为上课节次，课程表按它排课；" +
-                        "起床、大课间、熄灯等属于时间点，只在时间表里显示。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        if (problems.isNotEmpty()) {
-            item {
-                HarmonyCard(color = CampusColors.Warning.copy(alpha = 0.12f)) {
-                    problems.forEach { problem ->
-                        Text(
-                            text = "· $problem",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = CampusColors.Warning
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "可以先保存，之后再回来修改。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        item { SectionHeader(title = "上课节次", subtitle = "${draftTime.periods.size} 节") }
-        item {
-            HarmonyCard {
-                val periods = draftTime.periods.sortedBy { it.index }
-                if (periods.isEmpty()) {
-                    EmptyState(text = "还没有上课节次", hint = "点下面的「新增节次」开始")
-                } else {
-                    periods.forEachIndexed { index, period ->
-                        if (index > 0) HarmonyDivider()
-                        PeriodEditRow(
-                            period = period,
-                            onUpdate = { updated -> draftTime = TimetableEditing.updatePeriod(draftTime, updated) },
-                            onDelete = { confirmDeletePeriod = period.index },
-                            onAddAfter = { addPeriodAfter(period.index, period.section) }
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                HarmonyChip(
-                    text = "新增节次",
-                    icon = Icons.Filled.Add,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    onClick = { addPeriodAfter(draftTime.periods.maxOfOrNull { it.index }, "上午") }
-                )
-            }
-        }
-
-        item {
-            SectionHeader(
-                title = "时间点",
-                subtitle = "起床 / 早餐 / 大课间 / 熄灯…（不影响课程表）"
-            )
-        }
-        item {
-            HarmonyCard {
-                if (draftTime.timePoints.isEmpty()) {
-                    EmptyState(text = "还没有时间点", hint = "不需要可以不加")
-                } else {
-                    draftTime.timePoints.forEachIndexed { index, point ->
-                        if (index > 0) HarmonyDivider()
-                        TimePointEditRow(
-                            point = point,
-                            onUpdate = { updated ->
-                                draftTime = TimetableEditing.updateTimePointAt(draftTime, index, updated)
-                            },
-                            onDelete = { draftTime = TimetableEditing.removeTimePointAt(draftTime, index) }
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                HarmonyChip(
-                    text = "新增时间点",
-                    icon = Icons.Filled.Add,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    onClick = { draftTime = TimetableEditing.addTimePoint(draftTime) }
-                )
-            }
-        }
-    }
-
-    confirmDeletePeriod?.let { index ->
-        val affected = draftCourse.entries.count { it.periodIndex == index }
-        AlertDialog(
-            onDismissRequest = { confirmDeletePeriod = null },
-            title = { Text("删除第 $index 节？") },
-            text = {
-                Text(
-                    if (affected > 0) {
-                        "这一节上有 $affected 节课，删除后会一并移除，其余节次序号自动前移。"
-                    } else {
-                        "删除后其余节次序号会自动前移。"
-                    }
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val result = TimetableEditing.removePeriod(draftTime, draftCourse, index)
-                    draftTime = result.timeTable
-                    draftCourse = result.courseTable
-                    confirmDeletePeriod = null
-                }) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDeletePeriod = null }) { Text("取消") }
-            }
-        )
-    }
-}
-
-@Composable
-private fun PeriodEditRow(
-    period: Period,
-    onUpdate: (Period) -> Unit,
-    onDelete: () -> Unit,
-    onAddAfter: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "第 ${period.index} 节",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(66.dp)
-            )
-            OutlinedTextField(
-                value = period.name,
-                onValueChange = { onUpdate(period.copy(name = it)) },
-                modifier = Modifier.weight(1f),
-                label = { Text("名称") },
-                singleLine = true,
-                shape = RoundedCornerShape(CampusDimens.ChipRadius)
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = period.start,
-                onValueChange = { onUpdate(period.copy(start = it)) },
-                modifier = Modifier.weight(1f),
-                label = { Text("开始") },
-                placeholder = { Text("08:00") },
-                singleLine = true,
-                shape = RoundedCornerShape(CampusDimens.ChipRadius)
-            )
-            OutlinedTextField(
-                value = period.end,
-                onValueChange = { onUpdate(period.copy(end = it)) },
-                modifier = Modifier.weight(1f),
-                label = { Text("结束") },
-                placeholder = { Text("08:45") },
-                singleLine = true,
-                shape = RoundedCornerShape(CampusDimens.ChipRadius)
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = period.section,
-            onValueChange = { onUpdate(period.copy(section = it)) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("午别（上午 / 下午 / 晚上…）") },
-            singleLine = true,
-            shape = RoundedCornerShape(CampusDimens.ChipRadius)
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onAddAfter) { Text("在下方插入") }
-            TextButton(onClick = onDelete) { Text("删除", color = CampusColors.Error) }
-        }
-    }
-}
-
-@Composable
-private fun TimePointEditRow(
-    point: TimePoint,
-    onUpdate: (TimePoint) -> Unit,
-    onDelete: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        OutlinedTextField(
-            value = point.name,
-            onValueChange = { onUpdate(point.copy(name = it)) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("名称") },
-            singleLine = true,
-            shape = RoundedCornerShape(CampusDimens.ChipRadius)
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = point.start,
-                onValueChange = { onUpdate(point.copy(start = it)) },
-                modifier = Modifier.weight(1f),
-                label = { Text("时间") },
-                placeholder = { Text("06:40") },
-                singleLine = true,
-                shape = RoundedCornerShape(CampusDimens.ChipRadius)
-            )
-            OutlinedTextField(
-                value = point.end,
-                onValueChange = { onUpdate(point.copy(end = it)) },
-                modifier = Modifier.weight(1f),
-                label = { Text("结束（可留空）") },
-                singleLine = true,
-                shape = RoundedCornerShape(CampusDimens.ChipRadius)
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = point.section,
-            onValueChange = { onUpdate(point.copy(section = it)) },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("午别") },
-            singleLine = true,
-            shape = RoundedCornerShape(CampusDimens.ChipRadius)
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(onClick = onDelete) { Text("删除", color = CampusColors.Error) }
-        }
-    }
 }

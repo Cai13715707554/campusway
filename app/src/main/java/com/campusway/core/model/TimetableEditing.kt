@@ -3,8 +3,8 @@ package com.campusway.core.model
 /**
  * 编辑时间表/课程表后的结果。
  *
- * 两者可能一起变化：增删一个上课节次时，课程表里 `CourseEntry.periodIndex`
- * 引用的序号也要同步，否则课程会挂到空档上。
+ * 两者可能一起变化：增删节次、或把节次改成时间点，都会影响课程表里
+ * `CourseEntry.periodIndex` 引用的序号，所以一起返回。
  */
 data class TimetableEditResult(
     val timeTable: TimeTable,
@@ -12,108 +12,122 @@ data class TimetableEditResult(
 )
 
 /**
+ * 时间表编辑页里的一行：要么是上课节次，要么是时间点。
+ *
+ * - [key]：一次编辑会话内的稳定标识，供列表复用；
+ * - [originalIndex]：这一行原本是哪个节次序号（新建的、或本来就是时间点的为 null）；
+ *   保存时用它把课程表里引用的旧序号重映射到新序号，避免课程挂错节次；
+ * - [timeText]：一格时间文本，如 `08:00 - 08:45` 或 `06:40`，与首页展示一致。
+ */
+data class TimeItem(
+    val key: String,
+    val originalIndex: Int?,
+    val isPeriod: Boolean,
+    val name: String = "",
+    val timeText: String = "",
+    val section: String = ""
+)
+
+/**
  * 时间表与课程表的人工编辑变换。
  *
  * 全部是纯函数：输入旧值、返回新值，不碰磁盘、不依赖 Android，可直接单测。
- *
- * 约定：上课节次序号必须 1..K 连续（见 [TimeTable.validate]）。因此增删节次后
- * 会整体重新编号，并把课程表里引用到的节次序号一起重映射。
  */
 object TimetableEditing {
 
-    /** 默认命名「第 N 节」（允许空格）。只有这种名字会随序号重排，自定义名称不动。 */
+    /** 默认命名「第 N 节」（允许空格）；保存时这类名字随序号重排，自定义名称不动。 */
     private val DEFAULT_PERIOD_NAME = Regex("^第\\s*\\d+\\s*节$")
 
-    private fun renumberDefaultNames(periods: List<Period>): List<Period> =
-        periods.map { period ->
-            if (DEFAULT_PERIOD_NAME.matches(period.name)) period.copy(name = "第 ${period.index} 节") else period
+    /** 时间区间里的分隔符：`-`、`~`、`—`、`～` 等。 */
+    private val RANGE_SEPARATOR = Regex("\\s*[-~～—–－_]\\s*")
+
+    /** 把时间文本拆成 (开始, 结束)；只有一个时刻时结束为空串。 */
+    fun splitTime(text: String): Pair<String, String> {
+        val parts = text.trim().split(RANGE_SEPARATOR).filter { it.isNotBlank() }
+        return when {
+            parts.isEmpty() -> "" to ""
+            parts.size == 1 -> parts[0] to ""
+            else -> parts[0] to parts[1]
         }
+    }
 
-    // ---------------------------------------------------------------- 节次（时间表）
-
-    /** 修改一个节次的名称/起止时间/午别，序号不变。 */
-    fun updatePeriod(table: TimeTable, period: Period): TimeTable =
-        table.copy(periods = table.periods.map { if (it.index == period.index) period else it })
-
-    /**
-     * 在 [afterIndex] 之后插入一个空节次（为 null 表示插到最前面）。
-     * 之后（含新节次）的序号整体 +1，课程表引用的节次同步 +1。
-     *
-     * @return 新数据，以及新节次的序号。
-     */
-    fun addPeriodAfter(
-        table: TimeTable,
-        courseTable: CourseTable,
-        afterIndex: Int?,
-        name: String = "",
-        start: String = "",
-        end: String = "",
-        section: String = ""
-    ): Pair<TimetableEditResult, Int> {
-        val sorted = table.periods.sortedBy { it.index }
-        val insertAt = if (afterIndex == null) {
-            0
-        } else {
-            val pos = sorted.indexOfFirst { it.index == afterIndex }
-            if (pos < 0) sorted.size else pos + 1
-        }
-        val newIndex = insertAt + 1
-
-        val renumbered = sorted.mapIndexed { i, period ->
-            val oldPosition = i + 1
-            period.copy(index = if (oldPosition >= newIndex) oldPosition + 1 else oldPosition)
-        }
-        val inserted = Period(
-            index = newIndex,
-            name = name.ifBlank { "第 $newIndex 节" },
-            start = start,
-            end = end,
-            section = section
-        )
-        val newPeriods = renumberDefaultNames(
-            renumbered.take(insertAt) + inserted + renumbered.drop(insertAt)
-        )
-
-        val newEntries = courseTable.entries.map { entry ->
-            if (entry.periodIndex >= newIndex) entry.copy(periodIndex = entry.periodIndex + 1) else entry
-        }
-        val result = TimetableEditResult(
-            timeTable = table.copy(periods = newPeriods),
-            courseTable = courseTable.copy(entries = newEntries)
-        )
-        return result to newIndex
+    /** 一行展示用的起始分钟数，用于排序；解析不出来排最后。 */
+    private fun startMinutes(item: TimeItem): Int {
+        val start = item.timeText.trim().split(RANGE_SEPARATOR).firstOrNull().orEmpty()
+        return TimeOfDay.parseToMinutes(start).takeIf { it >= 0 } ?: Int.MAX_VALUE
     }
 
     /**
-     * 删除一个节次：其后的节次序号整体 -1，课程同步 -1；
-     * 该节次上的排课一并移除（课程本身保留）。
+     * 把时间表拆成编辑用的行：节次与时间点合并后按午别分组（午别按首次出现顺序），
+     * 组内按开始时间排序——与课表页「课程时间表」的排布一致。
      */
-    fun removePeriod(table: TimeTable, courseTable: CourseTable, index: Int): TimetableEditResult {
-        val newPeriods = renumberDefaultNames(
-            table.periods
-                .filterNot { it.index == index }
-                .sortedBy { it.index }
-                .mapIndexed { i, period -> period.copy(index = i + 1) }
-        )
-        val newEntries = courseTable.entries
-            .filterNot { it.periodIndex == index }
-            .map { entry -> if (entry.periodIndex > index) entry.copy(periodIndex = entry.periodIndex - 1) else entry }
-        return TimetableEditResult(table.copy(periods = newPeriods), courseTable.copy(entries = newEntries))
+    fun itemsOf(table: TimeTable): List<TimeItem> {
+        val items = mutableListOf<TimeItem>()
+        table.periods.forEach { period ->
+            items += TimeItem(
+                key = "p-${period.index}",
+                originalIndex = period.index,
+                isPeriod = true,
+                name = period.name,
+                timeText = "${period.start} - ${period.end}",
+                section = period.section.ifBlank { "其他" }
+            )
+        }
+        table.timePoints.forEachIndexed { position, point ->
+            items += TimeItem(
+                key = "t-$position",
+                originalIndex = null,
+                isPeriod = false,
+                name = point.name,
+                timeText = if (point.end.isBlank()) point.start else "${point.start} - ${point.end}",
+                section = point.section.ifBlank { "其他" }
+            )
+        }
+
+        val groups = LinkedHashMap<String, MutableList<TimeItem>>()
+        items.sortedBy { startMinutes(it) }.forEach { item ->
+            groups.getOrPut(item.section) { mutableListOf() } += item
+        }
+        return groups.values.flatten()
     }
 
-    // ---------------------------------------------------------------- 时间点（时间表）
+    /**
+     * 保存编辑结果：按当前行顺序给节次重新编号 1..K，
+     * 把课程表里引用的节次序号重映射过去；被删掉、或被改成时间点的节次，
+     * 它上面的排课一并丢弃。
+     */
+    fun applyItems(original: TimeTable, courseTable: CourseTable, items: List<TimeItem>): TimetableEditResult {
+        val periodItems = items.filter { it.isPeriod }
+        val pointItems = items.filterNot { it.isPeriod }
 
-    /** 修改第 [position] 个时间点（起床/早餐/大课间…），身份按位置定位。 */
-    fun updateTimePointAt(table: TimeTable, position: Int, point: TimePoint): TimeTable =
-        table.copy(timePoints = table.timePoints.mapIndexed { i, p -> if (i == position) point else p })
+        val remap = HashMap<Int, Int>()
+        val periods = periodItems.mapIndexed { i, item ->
+            val index = i + 1
+            item.originalIndex?.let { remap[it] = index }
+            val (start, end) = splitTime(item.timeText)
+            Period(
+                index = index,
+                name = if (DEFAULT_PERIOD_NAME.matches(item.name)) "第 $index 节" else item.name,
+                start = start,
+                end = end,
+                section = item.section
+            )
+        }
 
-    /** 删除第 [position] 个时间点。 */
-    fun removeTimePointAt(table: TimeTable, position: Int): TimeTable =
-        table.copy(timePoints = table.timePoints.filterIndexed { i, _ -> i != position })
+        val entries = courseTable.entries.mapNotNull { entry ->
+            remap[entry.periodIndex]?.let { entry.copy(periodIndex = it) }
+        }
 
-    /** 追加一个时间点。 */
-    fun addTimePoint(table: TimeTable, point: TimePoint = TimePoint(name = "", start = "")): TimeTable =
-        table.copy(timePoints = table.timePoints + point)
+        val timePoints = pointItems.map { item ->
+            val (start, end) = splitTime(item.timeText)
+            TimePoint(name = item.name, start = start, end = end, section = item.section)
+        }
+
+        return TimetableEditResult(
+            timeTable = original.copy(periods = periods, timePoints = timePoints),
+            courseTable = courseTable.copy(entries = entries)
+        )
+    }
 }
 
 /**

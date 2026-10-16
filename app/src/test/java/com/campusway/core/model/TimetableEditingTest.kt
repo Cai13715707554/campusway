@@ -7,104 +7,128 @@ import org.junit.Test
 /**
  * 时间表/课程表编辑变换测试。
  *
- * 重点是增删上课节次时，节次序号要连续、课程表里引用的节次序号要一起重映射——
- * 这两点错了界面上不一定看得出来，却会让课程挂到错误的空档上。
+ * 重点是保存时（[TimetableEditing.applyItems]）：
+ * 节次按行顺序重编号、课程表引用的旧序号要跟着重映射；
+ * 被删掉、或被改成时间点的节次，它上面的排课要一并丢弃——这些错了界面上不一定看得出来。
  */
 class TimetableEditingTest {
 
-    private fun p(index: Int, name: String = "第 $index 节") =
-        Period(index = index, name = name, start = "08:0$index", end = "08:4$index", section = "上午")
+    private fun period(index: Int, start: String, end: String, section: String) =
+        Period(index = index, name = "第 $index 节", start = start, end = end, section = section)
 
-    private val c1 = Course(id = "c1", name = "数学")
-    private val c2 = Course(id = "c2", name = "英语")
+    private val math = Course(id = "c1", name = "数学")
+    private val english = Course(id = "c2", name = "英语")
 
     @Test
-    fun `新增节次会把后面的序号和课程一起往后挪`() {
-        val table = TimeTable(periods = listOf(p(1), p(2), p(3)))
-        val courseTable = CourseTable(
-            courses = listOf(c1, c2),
-            entries = listOf(CourseEntry("c1", 1, 2), CourseEntry("c2", 1, 3))
-        )
-
-        val (result, newIndex) = TimetableEditing.addPeriodAfter(table, courseTable, afterIndex = 1)
-
-        assertEquals(2, newIndex)
-        assertEquals(listOf(1, 2, 3, 4), result.timeTable.periods.map { it.index })
-        // 插在中间的是新空节次
-        assertEquals("第 2 节", result.timeTable.period(2)?.name)
-        assertEquals("第 3 节", result.timeTable.period(3)?.name)
-        assertEquals(listOf(3, 4), result.courseTable.entries.map { it.periodIndex })
+    fun `时间文本可以拆成开始与结束`() {
+        assertEquals("08:00" to "08:45", TimetableEditing.splitTime("08:00 - 08:45"))
+        assertEquals("08:00" to "08:45", TimetableEditing.splitTime("08:00—08:45"))
+        assertEquals("06:40" to "", TimetableEditing.splitTime("06:40"))
+        assertEquals("" to "", TimetableEditing.splitTime(""))
     }
 
     @Test
-    fun `在末尾追加节次不影响已有课程`() {
-        val table = TimeTable(periods = listOf(p(1), p(2)))
-        val courseTable = CourseTable(courses = listOf(c1), entries = listOf(CourseEntry("c1", 1, 1)))
+    fun `拆行时按午别分组且组内按时间排序`() {
+        val table = TimeTable(
+            periods = listOf(
+                Period(2, "第 2 节", "09:00", "09:45", "上午"),
+                Period(1, "第 1 节", "08:00", "08:45", "上午")
+            ),
+            timePoints = listOf(
+                TimePoint("起床", "06:40", "", "上午"),
+                TimePoint("午休", "12:30", "13:50", "下午")
+            )
+        )
 
-        val (result, newIndex) = TimetableEditing.addPeriodAfter(table, courseTable, afterIndex = 2)
+        val items = TimetableEditing.itemsOf(table)
 
-        assertEquals(3, newIndex)
-        assertEquals(listOf(1, 2, 3), result.timeTable.periods.map { it.index })
-        assertEquals(listOf(1), result.courseTable.entries.map { it.periodIndex })
+        assertEquals(listOf("起床", "第 1 节", "第 2 节", "午休"), items.map { it.name })
+        assertEquals(listOf("上午", "上午", "上午", "下午"), items.map { it.section })
+        assertEquals(listOf(false, true, true, false), items.map { it.isPeriod })
     }
 
     @Test
-    fun `删除节次会把后面的序号和课程一起往前挪`() {
-        val table = TimeTable(periods = listOf(p(1), p(2), p(3)))
-        val courseTable = CourseTable(
-            courses = listOf(c1, c2),
+    fun `删除节次会连带丢弃它的排课并把后面的序号前移`() {
+        val time = TimeTable(
+            periods = listOf(
+                period(1, "08:00", "08:45", "上午"),
+                period(2, "08:55", "09:40", "上午"),
+                period(3, "14:00", "14:45", "下午")
+            )
+        )
+        val course = CourseTable(
+            courses = listOf(math, english),
             entries = listOf(CourseEntry("c1", 1, 2), CourseEntry("c2", 1, 3))
         )
 
-        val result = TimetableEditing.removePeriod(table, courseTable, index = 2)
+        val items = TimetableEditing.itemsOf(time).filterNot { it.originalIndex == 2 }
+        val result = TimetableEditing.applyItems(time, course, items)
 
         assertEquals(listOf(1, 2), result.timeTable.periods.map { it.index })
-        // 被删节次（2）上的排课消失，第 3 节的课前移到第 2 节
         assertEquals(listOf("c2"), result.courseTable.entries.map { it.courseId })
         assertEquals(listOf(2), result.courseTable.entries.map { it.periodIndex })
     }
 
     @Test
-    fun `修改节次的名称时间与午别`() {
-        val table = TimeTable(periods = listOf(p(1), p(2)))
-
-        val updated = TimetableEditing.updatePeriod(
-            table,
-            Period(index = 2, name = "上午第2节", start = "09:00", end = "09:45", section = "下午")
+    fun `把节次切成时间点会丢掉它上面的课`() {
+        val time = TimeTable(
+            periods = listOf(
+                period(1, "08:00", "08:45", "上午"),
+                period(2, "08:55", "09:40", "上午"),
+                period(3, "14:00", "14:45", "下午")
+            )
+        )
+        val course = CourseTable(
+            courses = listOf(math, english),
+            entries = listOf(CourseEntry("c1", 1, 1), CourseEntry("c2", 1, 3))
         )
 
-        val period = updated.period(2)
-        assertEquals("上午第2节", period?.name)
-        assertEquals("09:00", period?.start)
-        assertEquals("09:45", period?.end)
-        assertEquals("下午", period?.section)
-        // 其它节次不受影响
-        assertEquals("08:01", updated.period(1)?.start)
+        val items = TimetableEditing.itemsOf(time).map {
+            if (it.originalIndex == 3) it.copy(isPeriod = false) else it
+        }
+        val result = TimetableEditing.applyItems(time, course, items)
+
+        assertEquals(2, result.timeTable.periods.size)
+        assertEquals(listOf("c1"), result.courseTable.entries.map { it.courseId })
+        assertTrue(result.timeTable.timePoints.any { it.start == "14:00" })
     }
 
     @Test
-    fun `时间点可以修改删除与新增`() {
-        var table = TimeTable(timePoints = listOf(TimePoint("起床", "06:40")))
+    fun `把时间点切成节次会多出一个节次`() {
+        val time = TimeTable(
+            periods = listOf(period(1, "08:00", "08:45", "上午")),
+            timePoints = listOf(TimePoint("大课间", "09:00", "09:20", "上午"))
+        )
 
-        table = TimetableEditing.addTimePoint(table, TimePoint("早餐", "07:00"))
-        assertEquals(2, table.timePoints.size)
+        val items = TimetableEditing.itemsOf(time).map {
+            if (!it.isPeriod) it.copy(isPeriod = true) else it
+        }
+        val result = TimetableEditing.applyItems(time, CourseTable(), items)
 
-        table = TimetableEditing.updateTimePointAt(table, 0, TimePoint("起床", "06:30"))
-        assertEquals("06:30", table.timePoints[0].start)
+        assertEquals(2, result.timeTable.periods.size)
+        assertEquals(listOf("第 1 节", "大课间"), result.timeTable.periods.map { it.name })
+        assertTrue(result.timeTable.timePoints.isEmpty())
+    }
 
-        table = TimetableEditing.removeTimePointAt(table, 1)
-        assertEquals(1, table.timePoints.size)
-        assertEquals("起床", table.timePoints[0].name)
+    @Test
+    fun `默认命名会随序号重排自定义名称不动`() {
+        val items = listOf(
+            TimeItem("k1", null, true, name = "第 2 节", timeText = "09:00 - 09:45", section = "上午"),
+            TimeItem("k2", 1, true, name = "早读", timeText = "08:00 - 08:45", section = "上午")
+        )
+
+        val result = TimetableEditing.applyItems(TimeTable(), CourseTable(), items)
+
+        assertEquals(listOf("第 1 节", "早读"), result.timeTable.periods.map { it.name })
     }
 
     @Test
     fun `设置某天某节的课程与清空`() {
-        var table = CourseTable(courses = listOf(c1, c2))
+        var table = CourseTable(courses = listOf(math, english))
 
         table = CourseEditing.setEntry(table, dayOfWeek = 2, periodIndex = 3, courseId = "c1")
         assertEquals(1, table.entries.size)
         assertEquals(2, table.entries[0].dayOfWeek)
-        assertEquals(3, table.entries[0].periodIndex)
 
         // 同一格换一门课：只保留一条
         table = CourseEditing.setEntry(table, dayOfWeek = 2, periodIndex = 3, courseId = "c2")
@@ -120,17 +144,17 @@ class TimetableEditingTest {
     fun `新增或更新课程`() {
         var table = CourseTable()
 
-        table = CourseEditing.upsertCourse(table, c1)
+        table = CourseEditing.upsertCourse(table, math)
         assertEquals(1, table.courses.size)
 
-        table = CourseEditing.upsertCourse(table, c1.copy(name = "高等数学"))
+        table = CourseEditing.upsertCourse(table, math.copy(name = "高等数学"))
         assertEquals(1, table.courses.size)
         assertEquals("高等数学", table.courses[0].name)
     }
 
     @Test
     fun `删除课程会连带删除它的排课`() {
-        var table = CourseTable(courses = listOf(c1, c2))
+        var table = CourseTable(courses = listOf(math, english))
         table = CourseEditing.setEntry(table, 1, 1, "c1")
         table = CourseEditing.setEntry(table, 1, 2, "c2")
 
@@ -149,7 +173,6 @@ class TimetableEditingTest {
         )
         assertEquals("course-4", CourseEditing.newCourseId(existing))
 
-        // 已有 id 数量与列表长度不一致时也不能撞车
         val sparse = listOf(
             Course(id = "course-1", name = "语文"),
             Course(id = "course-2", name = "数学")
@@ -173,13 +196,7 @@ class TimetableEditingTest {
                     id = "b1",
                     name = "1 号楼",
                     floors = listOf(
-                        FloorPlan(
-                            buildingId = "b1",
-                            floorId = "b1-f1",
-                            level = 1,
-                            name = "1 层",
-                            rooms = listOf(room)
-                        )
+                        FloorPlan(buildingId = "b1", floorId = "b1-f1", level = 1, name = "1 层", rooms = listOf(room))
                     )
                 )
             )
